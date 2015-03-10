@@ -1,0 +1,333 @@
+#!/bin/bash
+# debmower - a tool to build your linux images
+# https://github.com/highvoltage/debmower
+#
+# Copyright (c) 2008-2012 Jonathan Carter
+# This file is released under the MIT/expat license.
+#
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files (the
+# "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish,
+# distribute, sublicense, and/or sell copies of the Software, and to
+# permit persons to whom the Software is furnished to do so, subject to
+# the following conditions:
+#
+# The above copyright notice and this permission notice shall be included
+# in all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+# IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+# CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+# TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+# SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+# Set languages to system language, prevents some spewage on console
+OLD_LANG=$LANG
+OLD_LANGUAGE=$LANGUAGE
+OLD_LC_ALL=$LC_ALL
+export CONFIG="$1"
+export LANG=C
+export LANGUAGE=C
+export LC_ALL=C
+
+if [ ! "$UID" = "0" ]; then
+    echo "This script is intended to run with root privileges. \
+          Your UID is $UID."
+    exit 403
+fi
+
+# Defaults
+# This is the Debmower Version used in logs
+DEBMOWER="0.03~pre1"
+# debian, ubuntu, maybe one day fedora?
+SYSTEM="ubuntu"
+# eg, 32768
+BLOCKSIZE="32768"
+# eg, ubuntu-precise, custom-disk
+NAME="$SYSTEM-custom-spin"
+# Version of /your/ disc/release
+VERSION="0.01"
+# iso filename
+ISONAME="$NAME-$VERSION.iso"
+ISOPATH="../"
+# Where base images are stored
+CACHEDIR="/var/cache/debmower/dists"
+# Where the squashfs contents are put together
+CHROOT="/var/cache/debmower/chroot"
+# Directory where work happens
+IMAGEDIR="./image"
+# Use contextualization for build (like lxc or kvm (none are implemented yet))
+CONTEXTUALIZE="none"
+RAMDISK="yes"
+# Where to log stuff
+LOGPATH=/var/log/debmower.$$
+# Architecture (i386, amd64, ppc, armhf)
+ARCH="i386"
+# What kind of image are we building? iso, usb
+IMAGETYPE="iso"
+
+# We make some assumptions on what the user will want based on the
+# type of system they are building. The user can specify alternatives
+# in their configuration file.
+if [ "$SYSTEM" = "debian" ]; then
+    LIVESYSTEM="live=LIVE"
+    LIVEDIR="live"
+    # eg, squeeze, wheezy
+    RELEASE="squeeze"
+    # eg, linux-image-686
+    KERNEL="linux-image-686"
+    # LIVECD should ideally specify one meta-package:
+    LIVECD="live-boot live-boot-initramfs-tools live-config \
+            live-config-sysvinit debian-installer-launcher \
+            debian-installer libdebian-installer-extra4 \
+            libdebian-installer4"
+    # MAINMETA should ideally specify one meta-package:
+    MAINMETA="gnome-session-fallback gnome-terminal strace locales \
+              less"
+    # how this system installs packages
+    INSTALL="apt-get -y -qq install --force-yes "
+    # Which releases to cache
+    CACHEDISTS="squeeze wheezy"
+    # eg, noninteractive, text
+    DEBIAN_FRONTEND="noninteractive"
+    # Disk Image template
+    TEMPLATE="/usr/share/doc/debmower/examples/template/debian"
+    DEBOOTSTRAP_MIRROR="http://archive.$SYSTEM.org/$SYSTEM"
+fi
+
+if [ "$SYSTEM" = "ubuntu" ]; then
+    LIVESYSTEM="live=casper"
+    LIVEDIR="casper"
+    # eg, precise, quantal
+    RELEASE="precise"
+    # eg, linux-image-generic
+    KERNEL="linux-image-generic"
+    # LIVECD should ideally specify one meta-package:
+    LIVECD="ubiquity casper user-setup xresprobe libdebian-installer4 \
+            os-prober ubiquity-frontend-gtk"
+    # MAINMETA should ideally specify one meta-package:
+    MAINMETA="gnome-session gnome-terminal strace locales \
+              less"
+    # how this system installs packages, the space at the end is important
+    INSTALL="apt-get -y -qq install --force-yes "
+    # Which releases to cache
+    CACHEDISTS="trusty"
+    # eg, noninteractive, text
+    DEBIAN_FRONTEND="noninteractive"
+    TEMPLATE="/usr/share/doc/debmower/examples/template/ubuntu"
+    DEBOOTSTRAP_MIRROR="http://archive.$SYSTEM.com/$SYSTEM"
+fi
+
+# Source configuration, if specified
+if [ "$CONFIG" != "" ]; then
+    if [ -f $CONFIG ]; then
+        . $CONFIG
+    else
+        echo "Specified configuration file not found, aborting..."
+    exit
+     fi
+else
+    echo "No configuration specified, continuing with defaults..."
+fi
+echo -e "Debmower, version $DEBMOWER building $NAME\n"
+echo    " - We're building a $RELEASE release of $SYSTEM."
+
+function initenv {
+    # Initialise environment
+    echo " * Initialising environment..."
+    echo "   (cleaning up previously used image source)"
+    #rm -rf $IMAGEDIR $CHROOT
+    echo "   (setting up base system)"
+    # Initialise LXC, if specified
+    if [ "$CONTEXTUALIZE" = "LXC" ]; then
+        echo "   (lxc contextualization will be used for this build)"
+        LXC_HOST="debmower-$$"
+        mkdir /dev/cgroup && mount -t cgroup none /dev/cgroup
+        if [ ! -f /dev/cgroup/tasks ]; then
+            echo "Error: cgroups doesn't seem to be present, exiting..."
+            exit
+        fi
+        echo "lxc.utsname = debmower_build_$$" > /tmp/debmower_lxc_config.$$
+        echo "lxc.rootfs = $CHROOT" >> /tmp/debmower_lxc_config.$$
+        lxc-create -n debmower_$$ -f /tmp/debmower_lxc_config.$$
+        #TODO: seems like adding "lxc-execute -n name " before commands should
+        #      generally do the trick
+    fi
+    mkdir -p $CHROOT
+    mkdir -p $CHROOT/dev/pts $CHROOT/proc/pts $IMAGEDIR \
+             $IMAGEDIR/$LIVEDIR $IMAGEDIR/syslinux $CHROOT/etc/apt
+    mount --bind /dev $CHROOT/dev
+    mount --bind /proc $CHROOT/proc
+    mount --bind /dev/pts $CHROOT/dev/pts
+    if [ ! -f $CACHEDIR/$RELEASE-$ARCH.tar.bz2 ]; then
+        updatecache
+    fi
+    tar -xf $CACHEDIR/$RELEASE-$ARCH.tar.bz2 -C $CHROOT
+    cp /etc/resolv.conf $CHROOT/etc
+    echo "   (setting up APT sources)"
+    sed -e "s/RELEASE/$RELEASE/g" $TEMPLATE/sources.list \
+            > $CHROOT/etc/apt/sources.list
+    LANG=C LANGUAGE=C LC_ALL=C chroot $CHROOT apt-get -qq update &>> $LOGPATH
+}
+
+function catch_break {
+    echo " * Break requested, cleaning up..."
+    echo " * Umounting filesystems and removing temporary files..."
+    umount -l /var/cache/debmower/chroot/dev/pts
+    umount -l /var/cache/debmower/chroot/dev
+    umount -l /var/cache/debmower/chroot/proc
+    # Perhaps exit a non-zero status
+    exit 0
+}
+
+function system_install {
+    echo " * Performing system installation..."
+    echo "   (installing packages)"
+    DEBIAN_FRONTEND=$DEBIAN_FRONTEND chroot $CHROOT $INSTALL \
+                    $MAINMETA &>> $LOGPATH
+    echo "   (installing kernel)"
+    DEBIAN_FRONTEND=$DEBIAN_FRONTEND chroot $CHROOT $INSTALL \
+                    $KERNEL &>> $LOGPATH
+}
+
+function setup_livecd {
+    # Set up Live CD
+    echo " * Setting up Live CD environment..."
+    echo "   (installing packages)"
+    chroot $CHROOT $INSTALL $LIVECD &>> $LOGPATH
+    echo "   (copying kernels)"
+    # FIXME: A lot of the section below is debian-specific
+    # might want to fix that if we ever want to support fedora.
+    # The debian and fedora functions should move to their own
+    # sections and be called depending on the system.NG=C LANGUAGE=C LC_ALL=C
+    chroot $CHROOT update-initramfs -u
+    # FIXME: kernel versions shouldn't be hardcoded
+    cp $CHROOT/boot/vmlinuz-3.* $IMAGEDIR/$LIVEDIR/vmlinuz
+    cp $CHROOT/boot/initrd.img-3.* $IMAGEDIR/$LIVEDIR/initrd.img
+    echo "   (copying artwork and files required for booting)"
+    cp /usr/lib/syslinux/vesamenu.c32 $IMAGEDIR/syslinux
+    cp /usr/lib/syslinux/isolinux.bin $IMAGEDIR/syslinux/syslinux.bin
+    cp $TEMPLATE/syslinux/* $IMAGEDIR/syslinux
+
+    # TODO: Create README.diskdefines for iso/usb images...
+    # cp $TEMPLATE/README.diskdefines $IMAGEDIR/syslinux
+    # Format:
+    # #define DISKNAME  Edubuntu 11.04 "Natty Narwhal" - Alpha i386
+    # #define TYPE binary
+    # #define TYPEbinary 1
+    # #define ARCH i386
+    # #define ARCHi386 1
+    # #define DISKNUM 1
+    # #define DISKNUM1 1
+    # #define TOTALNUM 0
+    # #define TOTALNUM0 1
+
+    # Copy Custom CD root data
+    if [ -d $TEMPLATE/cdroot ]; then
+        cp -r $TEMPLATE/cdroot/* $IMAGEDIR/
+    fi
+
+    # TODO: If memtest86+.bin is installed in the chroot, use it:
+    # cp /boot/memtest86+.bin $IMAGEDIR/boot/memtest
+
+    # TODO: If smb.img is installed in the chroot, use it:
+    #cp /boot/sbm.img $IMAGEDIR/boot/
+
+    echo "   (cleaning up)"
+    chroot $CHROOT apt-get clean
+    rm -rf $CHROOT/tmp/*
+    rm -f $CHROOT/etc/resolv.conf
+    umount -l -f $CHROOT/proc
+    umount -l -f $CHROOT/dev
+    #umount -l -f $CHROOT/dev/pts
+    echo "localhost" > $CHROOT/etc/hostname
+
+    # Create a manifest file if we use Ubiquity (or for now, Ubuntu, at least)
+    if [ "$SYSTEM" = "ubuntu" ]; then
+        echo "   (creating livecd manifest)"
+        chroot $CHROOT dpkg-query -W --showformat='${Package} ${Version}\n' \
+                       | tee image/$LIVEDIR/filesystem.manifest &>> $LOGPATH
+        cp $IMAGEDIR/$LIVEDIR/filesystem.manifest{,-desktop}
+        REMOVE='ubiquity casper user-setup discover1 xresprobe libdebian-installer4 os-prober'
+        for i in $REMOVE
+        do
+            sed -i "/${i}/d" $IMAGEDIR/casper/filesystem.manifest-desktop
+        done
+    fi
+}
+
+function build_cd_image {
+    echo " * Building CD Image..."
+    echo "   (creating squashfs image)"
+    mksquashfs $CHROOT $IMAGEDIR/$LIVEDIR/filesystem.squashfs \
+               -noappend -no-progress -b $BLOCKSIZE &>> $LOGPATH
+    echo "   (creating md5sums)"
+    (cd $IMAGEDIR && find . -type f -print0 | xargs -0 md5sum > md5sum.txt)
+    echo "   (creating iso image)"
+    cd $IMAGEDIR
+    genisoimage -quiet -r -V "$IMAGE_NAME" -cache-inodes -J -l -b \
+                syslinux/syslinux.bin -input-charset utf8 \
+                -c syslinux/boot.cat -no-emul-boot -boot-load-size 4 \
+                -boot-info-table -o $ISOPATH/$ISONAME \
+                . &>> $LOGPATH ; cd ..
+    echo "   (cleaning up)"
+    rm -rf $CHROOT
+    #rm -rf $IMAGEDIR
+}
+
+function updatecache {
+    mkdir -p $CACHEDIR
+    cd $CACHEDIR
+    mkdir -p tmpfs
+    mount -t tmpfs tmpfs tmpfs
+
+    for release in $CACHEDISTS; do
+        echo " * Performing initial debootstrapping for $release..."
+        chroot=tmpfs/chroot
+        mkdir -p $chroot/dev/pts $chroot/dev
+        debootstrap $release $chroot $DEBOOTSTRAP_MIRROR &>> $LOGPATH
+        echo " * Installing standard packages..."
+        mount --bind /proc $chroot/proc
+        mount --bind /dev $chroot/dev
+        mount --bind /dev/pts $chroot/dev/pts
+        if [ "$CACHEPACKAGES" != "" ]; then
+            chroot $chroot apt-get --force-yes -qq -y $CACHEPACKAGES \
+            &>> $LOGPATH
+        fi
+        echo " * Cleaning up..."
+        export LANG=$OLD_LANG
+        export LANGUAGE=$OLD_LANGUAGE
+        export LC_ALL=$OLD_LC_ALL
+        chroot $chroot apt-get clean
+        umount -l $chroot/proc
+        umount -l $chroot/dev/pts
+        umount -l $chroot/dev
+        rmdir $chroot/dev/shm
+        echo " * Creating $release tarball..."
+        cd tmpfs/chroot
+        tar -cjf $CACHEDIR/$release-$ARCH.tar.bz2 .
+        # Squashfs may be used for future ramdisk use
+        #echo "   (and squashfs image)"
+        #mksquashfs chroot $CACHEDIR/$release.squashfs
+        cd ../../
+        rm -rf $chroot
+    done
+    umount -l tmpfs
+    rmdir tmpfs
+    cd ..
+}
+
+if [ "$2" = "updatecache" ]; then
+    updatecache
+    exit
+fi
+
+trap catch_break 2
+
+initenv
+system_install
+setup_livecd
+build_cd_image
