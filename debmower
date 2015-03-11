@@ -96,6 +96,7 @@ if [ "$SYSTEM" = "debian" ]; then
     # Disk Image template
     TEMPLATE="/usr/share/doc/debmower/examples/template/debian"
     DEBOOTSTRAP_MIRROR="http://archive.$SYSTEM.org/$SYSTEM"
+    ISOHYBRID="yes"
 fi
 
 if [ "$SYSTEM" = "ubuntu" ]; then
@@ -119,6 +120,7 @@ if [ "$SYSTEM" = "ubuntu" ]; then
     DEBIAN_FRONTEND="noninteractive"
     TEMPLATE="/usr/share/doc/debmower/examples/template/ubuntu"
     DEBOOTSTRAP_MIRROR="http://archive.$SYSTEM.com/$SYSTEM"
+    ISOHYBRID="yes"
 fi
 
 # Source configuration, if specified
@@ -281,6 +283,10 @@ function build_cd_image {
                 -c isolinux/boot.cat -no-emul-boot -boot-load-size 4 \
                 -boot-info-table -o $ISOPATH/$ISONAME \
                 . &>> $LOGPATH ; cd ..
+    if [ "$ISOHYBRID" = "yes" ]; then
+        echo "   (activating isohybrid)"
+        isohybrid $ISOPATH/$ISONAME &>> $LOGPATH
+    fi
     echo "   (cleaning up)"
     rm -rf $CHROOT
     #rm -rf $IMAGEDIR
