@@ -61,7 +61,7 @@ CHROOT="/var/cache/debmower/chroot"
 IMAGEDIR="./image"
 # Use contextualization for build (like lxc or kvm (none are implemented yet))
 CONTEXTUALIZE="none"
-RAMDISK="yes"
+RAMDISK="no"
 # Where to log stuff
 LOGPATH=/var/log/debmower.$$
 # Architecture (i386, amd64, ppc, armhf)
@@ -108,7 +108,7 @@ if [ "$SYSTEM" = "ubuntu" ]; then
     KERNEL="linux-image-generic"
     # LIVECD should ideally specify one meta-package:
     LIVECD="ubiquity casper user-setup xresprobe libdebian-installer4 \
-            os-prober ubiquity-frontend-gtk"
+            os-prober ubiquity-frontend-gtk ubiquity-slideshow-ubuntu"
     # MAINMETA should ideally specify one meta-package:
     MAINMETA="gnome-session gnome-terminal strace locales \
               less"
@@ -140,12 +140,12 @@ echo    " - We're building a $RELEASE release of $SYSTEM."
 function initenv {
     # Initialise environment
     echo " * Initialising environment..."
-    echo "   (cleaning up previously used image source)"
+    echo "   $(date +%H:%M:%S) (cleaning up previously used image source)"
     rm -rf $IMAGEDIR $CHROOT
-    echo "   (setting up base system)"
+    echo "   $(date +%H:%M:%S) (setting up base system)"
     # Initialise LXC, if specified
     if [ "$CONTEXTUALIZE" = "LXC" ]; then
-        echo "   (lxc contextualization will be used for this build)"
+        echo "   ($(date +%H:%M:%S) lxc contextualization will be used for this build)"
         LXC_HOST="debmower-$$"
         mkdir /dev/cgroup && mount -t cgroup none /dev/cgroup
         if [ ! -f /dev/cgroup/tasks ]; then
@@ -158,7 +158,15 @@ function initenv {
         #TODO: seems like adding "lxc-execute -n name " before commands should
         #      generally do the trick
     fi
-    mkdir -p $CHROOT
+    if [ "$RAMDISK" = "yes" ]; then
+    #TODO: check for valid ramdisk space etc
+        echo "   $(date +%H:%M:%S) (enabling a ramdisk build)"
+        mkdir -p /dev/shm/$CHROOT
+        #CHROOT="/dev/shm/$CHROOT"
+        ln -s -p /dev/shm/$CHROOT /dev/shm/$CHROOT
+    else
+        mkdir -p $CHROOT
+    fi
     mkdir -p $CHROOT/dev/pts $CHROOT/proc/pts $IMAGEDIR \
              $IMAGEDIR/$LIVEDIR $IMAGEDIR/syslinux $CHROOT/etc/apt
     mount --bind /dev $CHROOT/dev
@@ -169,7 +177,7 @@ function initenv {
     fi
     tar -xf $CACHEDIR/$RELEASE-$ARCH.tar.bz2 -C $CHROOT &>> $LOGPATH
     cp /etc/resolv.conf $CHROOT/etc
-    echo "   (setting up APT sources)"
+    echo "   $(date +%H:%M:%S) (setting up APT sources)"
     sed -e "s/RELEASE/$RELEASE/g" $TEMPLATE/sources.list \
             > $CHROOT/etc/apt/sources.list
     LANG=C LANGUAGE=C LC_ALL=C chroot $CHROOT apt-get update &>> $LOGPATH
@@ -187,14 +195,14 @@ function catch_break {
 
 function system_install {
     echo " * Performing system installation..."
-    echo "   (temporary systemd fix... #FIXME)"
+    echo "   $(date +%H:%M:%S) (temporary systemd fix... #FIXME)"
     touch $CHROOT/etc/init.d/systemd-logind
     touch $CHROOT/etc/init.d/whoopsie
     #chmod +x $CHROOT/etc/init.d/systemd-logind
-    echo "   (installing packages)"
+    echo "   $(date +%H:%M:%S) (installing packages)"
     DEBIAN_FRONTEND=$DEBIAN_FRONTEND chroot $CHROOT $INSTALL \
                     $MAINMETA &>> $LOGPATH
-    echo "   (installing kernel)"
+    echo "   $(date +%H:%M:%S) (installing kernel)"
     DEBIAN_FRONTEND=$DEBIAN_FRONTEND chroot $CHROOT $INSTALL \
                     $KERNEL &>> $LOGPATH
 }
@@ -202,9 +210,9 @@ function system_install {
 function setup_livecd {
     # Set up Live CD
     echo " * Setting up Live CD environment..."
-    echo "   (installing packages)"
+    echo "   $(date +%H:%M:%S) (installing packages)"
     chroot $CHROOT $INSTALL $LIVECD &>> $LOGPATH
-    echo "   (copying kernels)"
+    echo "   $(date +%H:%M:%S) (copying kernels)"
     # FIXME: A lot of the section below is debian-specific
     # might want to fix that if we ever want to support fedora.
     # The debian and fedora functions should move to their own
@@ -217,23 +225,24 @@ function setup_livecd {
     gzip -d $IMAGEDIR/$LIVEDIR/initrd.img.gz &>> $LOGPATH
     lzma $IMAGEDIR/$LIVEDIR/initrd.img &>> $LOGPATH
     mv $IMAGEDIR/$LIVEDIR/initrd.img.lzma $IMAGEDIR/$LIVEDIR/initrd.lz
-    echo "   (copying artwork and files required for booting)"
+    echo "   $(date +%H:%M:%S) (copying artwork and files required for booting)"
     cp /usr/lib/syslinux/vesamenu.c32 $IMAGEDIR/syslinux &>> $LOGPATH
     cp /usr/lib/syslinux/isolinux.bin $IMAGEDIR/syslinux/syslinux.bin &>> $LOGPATH
     cp $TEMPLATE/syslinux/* $IMAGEDIR/syslinux &>> $LOGPATH
 
-    # TODO: Create README.diskdefines for iso/usb images...
-    # cp $TEMPLATE/README.diskdefines $IMAGEDIR/syslinux
-    # Format:
-    # #define DISKNAME  Edubuntu 11.04 "Natty Narwhal" - Alpha i386
-    # #define TYPE binary
-    # #define TYPEbinary 1
-    # #define ARCH i386
-    # #define ARCHi386 1
-    # #define DISKNUM 1
-    # #define DISKNUM1 1
-    # #define TOTALNUM 0
-    # #define TOTALNUM0 1
+    #TODO: if a template exists, us it.
+    # like cp $TEMPLATE/README.diskdefines $IMAGEDIR/syslinux
+    cat << EOF > $IMAGEDIR/README.diskdefines
+#define DISKNAME  $NAME - $ARCH
+#define TYPE binary
+#define TYPEbinary 1
+#define ARCH $ARCH
+#define ARCH$ARCH 1
+#define DISKNUM 1
+#define DISKNUM1 1
+#define TOTALNUM 0
+#define TOTALNUM0 1
+EOF
 
     # Copy Custom CD root data
     if [ -d $TEMPLATE/cdroot ]; then
@@ -246,7 +255,7 @@ function setup_livecd {
     # TODO: If smb.img is installed in the chroot, use it:
     #cp /boot/sbm.img $IMAGEDIR/boot/
 
-    echo "   (cleaning up)"
+    echo "   $(date +%H:%M:%S) (cleaning up)"
     chroot $CHROOT apt-get clean
     rm -rf $CHROOT/tmp/*
     rm -f $CHROOT/etc/resolv.conf
@@ -257,7 +266,7 @@ function setup_livecd {
 
     # Create a manifest file if we use Ubiquity (or for now, Ubuntu, at least)
     if [ "$SYSTEM" = "ubuntu" ]; then
-        echo "   (creating livecd manifest)"
+        echo "   $(date +%H:%M:%S) (creating livecd manifest)"
         chroot $CHROOT dpkg-query -W --showformat='${Package} ${Version}\n' \
                        | tee image/$LIVEDIR/filesystem.manifest &>> $LOGPATH
         cp $IMAGEDIR/$LIVEDIR/filesystem.manifest{,-desktop}
@@ -271,12 +280,12 @@ function setup_livecd {
 
 function build_cd_image {
     echo " * Building CD Image..."
-    echo "   (creating squashfs image)"
+    echo "   $(date +%H:%M:%S) (creating squashfs image)"
     mksquashfs $CHROOT $IMAGEDIR/$LIVEDIR/filesystem.squashfs \
                -noappend -no-progress -b $BLOCKSIZE &>> $LOGPATH
-    echo "   (creating md5sums)"
+    echo "   $(date +%H:%M:%S) (creating md5sums)"
     (cd $IMAGEDIR && find . -type f -print0 | xargs -0 md5sum > md5sum.txt)
-    echo "   (creating iso image)"
+    echo "   $(date +%H:%M:%S) (creating iso image)"
     cd $IMAGEDIR
     genisoimage -quiet -r -V "$IMAGE_NAME" -cache-inodes -J -l -b \
                 isolinux/isolinux.bin -input-charset utf8 \
@@ -284,10 +293,10 @@ function build_cd_image {
                 -boot-info-table -o $ISOPATH/$ISONAME \
                 . &>> $LOGPATH ; cd ..
     if [ "$ISOHYBRID" = "yes" ]; then
-        echo "   (activating isohybrid)"
-        isohybrid $ISOPATH/$ISONAME &>> $LOGPATH
+        echo "   $(date +%H:%M:%S) (activating isohybrid)"
+        isohybrid --uefi $ISONAME &>> $LOGPATH
     fi
-    echo "   (cleaning up)"
+    echo "   $(date +%H:%M:%S) (cleaning up)"
     rm -rf $CHROOT
     #rm -rf $IMAGEDIR
 }
@@ -299,11 +308,11 @@ function updatecache {
     mount -t tmpfs tmpfs tmpfs
 
     for release in $CACHEDISTS; do
-        echo " * Performing initial debootstrapping for $release..."
+        echo " * $(date +%H:%M:%S) Performing initial debootstrapping for $release..."
         chroot=tmpfs/chroot
         mkdir -p $chroot/dev/pts $chroot/dev
         debootstrap $release $chroot $DEBOOTSTRAP_MIRROR &>> $LOGPATH
-        echo " * Installing standard packages..."
+        echo " * $(date +%H:%M:%S) Installing standard packages..."
         mount --bind /proc $chroot/proc
         mount --bind /dev $chroot/dev
         mount --bind /dev/pts $chroot/dev/pts
@@ -311,7 +320,7 @@ function updatecache {
             chroot $chroot apt-get --force-yes -qq -y $CACHEPACKAGES \
             &>> $LOGPATH
         fi
-        echo " * Cleaning up..."
+        echo " * $(date +%H:%M:%S) Cleaning up..."
         export LANG=$OLD_LANG
         export LANGUAGE=$OLD_LANGUAGE
         export LC_ALL=$OLD_LC_ALL
@@ -321,7 +330,7 @@ function updatecache {
         umount -l $chroot/dev
         rmdir -f $chroot/dev/shm
         rmdir -f $chroot/proc/pts
-        echo " * Creating $release tarball..."
+        echo " * $(date +%H:%M:%S) Creating $release tarball..."
         cd tmpfs/chroot
         tar -cjf $CACHEDIR/$release-$ARCH.tar.bz2 .
         # Squashfs may be used for future ramdisk use
