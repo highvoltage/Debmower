@@ -88,9 +88,9 @@ if [ "$SYSTEM" = "debian" ]; then
     MAINMETA="gnome-session-fallback gnome-terminal strace locales \
               less"
     # how this system installs packages
-    INSTALL="apt-get -y -qq install --force-yes "
+    INSTALL="apt-get -y install --force-yes "
     # Which releases to cache
-    CACHEDISTS="squeeze wheezy"
+    CACHEDISTS="squeeze wheezy jessie"
     # eg, noninteractive, text
     DEBIAN_FRONTEND="noninteractive"
     # Disk Image template
@@ -101,8 +101,8 @@ fi
 if [ "$SYSTEM" = "ubuntu" ]; then
     LIVESYSTEM="live=casper"
     LIVEDIR="casper"
-    # eg, precise, quantal
-    RELEASE="precise"
+    # eg, precise, trusty
+    RELEASE="trusty"
     # eg, linux-image-generic
     KERNEL="linux-image-generic"
     # LIVECD should ideally specify one meta-package:
@@ -112,7 +112,7 @@ if [ "$SYSTEM" = "ubuntu" ]; then
     MAINMETA="gnome-session gnome-terminal strace locales \
               less"
     # how this system installs packages, the space at the end is important
-    INSTALL="apt-get -y -qq install --force-yes "
+    INSTALL="apt-get -y install --force-yes "
     # Which releases to cache
     CACHEDISTS="trusty"
     # eg, noninteractive, text
@@ -139,7 +139,7 @@ function initenv {
     # Initialise environment
     echo " * Initialising environment..."
     echo "   (cleaning up previously used image source)"
-    #rm -rf $IMAGEDIR $CHROOT
+    rm -rf $IMAGEDIR $CHROOT
     echo "   (setting up base system)"
     # Initialise LXC, if specified
     if [ "$CONTEXTUALIZE" = "LXC" ]; then
@@ -165,12 +165,12 @@ function initenv {
     if [ ! -f $CACHEDIR/$RELEASE-$ARCH.tar.bz2 ]; then
         updatecache
     fi
-    tar -xf $CACHEDIR/$RELEASE-$ARCH.tar.bz2 -C $CHROOT
+    tar -xf $CACHEDIR/$RELEASE-$ARCH.tar.bz2 -C $CHROOT &>> $LOGPATH
     cp /etc/resolv.conf $CHROOT/etc
     echo "   (setting up APT sources)"
     sed -e "s/RELEASE/$RELEASE/g" $TEMPLATE/sources.list \
             > $CHROOT/etc/apt/sources.list
-    LANG=C LANGUAGE=C LC_ALL=C chroot $CHROOT apt-get -qq update &>> $LOGPATH
+    LANG=C LANGUAGE=C LC_ALL=C chroot $CHROOT apt-get update &>> $LOGPATH
 }
 
 function catch_break {
@@ -179,12 +179,16 @@ function catch_break {
     umount -l /var/cache/debmower/chroot/dev/pts
     umount -l /var/cache/debmower/chroot/dev
     umount -l /var/cache/debmower/chroot/proc
-    # Perhaps exit a non-zero status
-    exit 0
+    # 299 a Debhub exit code for 'aborted'
+    exit 299
 }
 
 function system_install {
     echo " * Performing system installation..."
+    echo "   (temporary systemd fix... #FIXME)"
+    touch $CHROOT/etc/init.d/systemd-logind
+    touch $CHROOT/etc/init.d/whoopsie
+    #chmod +x $CHROOT/etc/init.d/systemd-logind
     echo "   (installing packages)"
     DEBIAN_FRONTEND=$DEBIAN_FRONTEND chroot $CHROOT $INSTALL \
                     $MAINMETA &>> $LOGPATH
@@ -203,14 +207,18 @@ function setup_livecd {
     # might want to fix that if we ever want to support fedora.
     # The debian and fedora functions should move to their own
     # sections and be called depending on the system.NG=C LANGUAGE=C LC_ALL=C
-    chroot $CHROOT update-initramfs -u
-    # FIXME: kernel versions shouldn't be hardcoded
-    cp $CHROOT/boot/vmlinuz-3.* $IMAGEDIR/$LIVEDIR/vmlinuz
-    cp $CHROOT/boot/initrd.img-3.* $IMAGEDIR/$LIVEDIR/initrd.img
+    chroot $CHROOT update-initramfs -u &>> $LOGPATH
+    # The initrd needs to be compressed with lzmo, so we need to decompress it from
+    # the default gzip first.
+    cp $CHROOT/boot/vmlinuz-* $IMAGEDIR/$LIVEDIR/vmlinuz.efi &>> $LOGPATH
+    cp $CHROOT/boot/initrd.img-* $IMAGEDIR/$LIVEDIR/initrd.img.gz &>> $LOGPATH
+    gzip -d $IMAGEDIR/$LIVEDIR/initrd.img.gz &>> $LOGPATH
+    lzma $IMAGEDIR/$LIVEDIR/initrd.img &>> $LOGPATH
+    mv $IMAGEDIR/$LIVEDIR/initrd.img.lzma $IMAGEDIR/$LIVEDIR/initrd.lz
     echo "   (copying artwork and files required for booting)"
-    cp /usr/lib/syslinux/vesamenu.c32 $IMAGEDIR/syslinux
-    cp /usr/lib/syslinux/isolinux.bin $IMAGEDIR/syslinux/syslinux.bin
-    cp $TEMPLATE/syslinux/* $IMAGEDIR/syslinux
+    cp /usr/lib/syslinux/vesamenu.c32 $IMAGEDIR/syslinux &>> $LOGPATH
+    cp /usr/lib/syslinux/isolinux.bin $IMAGEDIR/syslinux/syslinux.bin &>> $LOGPATH
+    cp $TEMPLATE/syslinux/* $IMAGEDIR/syslinux &>> $LOGPATH
 
     # TODO: Create README.diskdefines for iso/usb images...
     # cp $TEMPLATE/README.diskdefines $IMAGEDIR/syslinux
@@ -269,8 +277,8 @@ function build_cd_image {
     echo "   (creating iso image)"
     cd $IMAGEDIR
     genisoimage -quiet -r -V "$IMAGE_NAME" -cache-inodes -J -l -b \
-                syslinux/syslinux.bin -input-charset utf8 \
-                -c syslinux/boot.cat -no-emul-boot -boot-load-size 4 \
+                isolinux/isolinux.bin -input-charset utf8 \
+                -c isolinux/boot.cat -no-emul-boot -boot-load-size 4 \
                 -boot-info-table -o $ISOPATH/$ISONAME \
                 . &>> $LOGPATH ; cd ..
     echo "   (cleaning up)"
@@ -305,7 +313,8 @@ function updatecache {
         umount -l $chroot/proc
         umount -l $chroot/dev/pts
         umount -l $chroot/dev
-        rmdir $chroot/dev/shm
+        rmdir -f $chroot/dev/shm
+        rmdir -f $chroot/proc/pts
         echo " * Creating $release tarball..."
         cd tmpfs/chroot
         tar -cjf $CACHEDIR/$release-$ARCH.tar.bz2 .
