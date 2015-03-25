@@ -139,6 +139,7 @@ echo    " - We're building a $RELEASE release of $SYSTEM."
 function initenv {
     # Initialise environment
     echo " * Initialising environment..."
+    echo "" &>> $LOGPATH
     echo "   $(date +%H:%M:%S) (cleaning up previously used image source)"
     rm -rf $IMAGEDIR $CHROOT
     echo "   $(date +%H:%M:%S) (setting up base system)"
@@ -245,7 +246,7 @@ EOF
 
     # Copy Custom CD root data
     if [ -d $TEMPLATE/cdroot ]; then
-        cp -r $TEMPLATE/cdroot/* $IMAGEDIR/
+        cp -r $TEMPLATE/cdroot/. $IMAGEDIR/
     fi
 
     # TODO: If memtest86+.bin is installed in the chroot, use it:
@@ -260,8 +261,8 @@ EOF
     rm -f $CHROOT/etc/resolv.conf
     umount -l -f $CHROOT/proc
     umount -l -f $CHROOT/dev
-    #umount -l -f $CHROOT/dev/pts
     echo "localhost" > $CHROOT/etc/hostname
+    chroot $CHROOT apt-get -y autoremove &>> $LOGPATH
 
     # Create a manifest file if we use Ubiquity (or for now, Ubuntu, at least)
     if [ "$SYSTEM" = "ubuntu" ]; then
@@ -269,8 +270,8 @@ EOF
         chroot $CHROOT dpkg-query -W --showformat='${Package} ${Version}\n' \
                        | tee image/$LIVEDIR/filesystem.manifest &>> $LOGPATH
         cp $IMAGEDIR/$LIVEDIR/filesystem.manifest{,-desktop}
-        REMOVE='ubiquity casper user-setup discover1 xresprobe \
-                libdebian-installer4 os-prober $LIVECD'
+        REMOVE="ubiquity casper user-setup discover1 xresprobe \
+                libdebian-installer4 os-prober $LIVECD"
         for package in $REMOVE; do
             sed -i "/${package}/d" $IMAGEDIR/casper/filesystem.manifest-desktop
         done
@@ -336,8 +337,9 @@ function updatecache {
         cd tmpfs/chroot
         tar -cjf $CACHEDIR/$release-$ARCH.tar.bz2 .
         # Squashfs may be used for future ramdisk use
-        #echo "   (and squashfs image)"
-        #mksquashfs chroot $CACHEDIR/$release.squashfs
+        echo " * $(date +%H:%M:%S) (and squashfs image)"
+        mksquashfs $CHROOT $CACHEDIR/$release-$ARCH.squashfs \
+                   -comp -lzo -noappend
         cd ../../
         rm -rf $chroot
     done
