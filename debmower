@@ -110,8 +110,7 @@ if [ "$SYSTEM" = "ubuntu" ]; then
     LIVECD="ubiquity casper user-setup xresprobe libdebian-installer4 \
             os-prober ubiquity-frontend-gtk ubiquity-slideshow-ubuntu"
     # MAINMETA should ideally specify one meta-package:
-    MAINMETA="gnome-session gnome-terminal strace locales \
-              less"
+    MAINMETA="ubuntu-desktop"
     # how this system installs packages, the space at the end is important
     INSTALL="apt-get -y install --force-yes "
     # Which releases to cache
@@ -198,7 +197,7 @@ function system_install {
     echo "   $(date +%H:%M:%S) (temporary systemd fix... #FIXME)"
     touch $CHROOT/etc/init.d/systemd-logind
     touch $CHROOT/etc/init.d/whoopsie
-    #chmod +x $CHROOT/etc/init.d/systemd-logind
+    touch $CHROOT/etc/init.d/modemmanager
     echo "   $(date +%H:%M:%S) (installing packages)"
     DEBIAN_FRONTEND=$DEBIAN_FRONTEND chroot $CHROOT $INSTALL \
                     $MAINMETA &>> $LOGPATH
@@ -226,9 +225,9 @@ function setup_livecd {
     lzma $IMAGEDIR/$LIVEDIR/initrd.img &>> $LOGPATH
     mv $IMAGEDIR/$LIVEDIR/initrd.img.lzma $IMAGEDIR/$LIVEDIR/initrd.lz
     echo "   $(date +%H:%M:%S) (copying artwork and files required for booting)"
-    cp /usr/lib/syslinux/vesamenu.c32 $IMAGEDIR/syslinux &>> $LOGPATH
-    cp /usr/lib/syslinux/isolinux.bin $IMAGEDIR/syslinux/syslinux.bin &>> $LOGPATH
-    cp $TEMPLATE/syslinux/* $IMAGEDIR/syslinux &>> $LOGPATH
+    #cp /usr/lib/syslinux/vesamenu.c32 $IMAGEDIR/syslinux &>> $LOGPATH
+    #cp /usr/lib/syslinux/isolinux.bin $IMAGEDIR/syslinux/syslinux.bin &>> $LOGPATH
+    #cp $TEMPLATE/syslinux/* $IMAGEDIR/syslinux &>> $LOGPATH
 
     #TODO: if a template exists, us it.
     # like cp $TEMPLATE/README.diskdefines $IMAGEDIR/syslinux
@@ -270,10 +269,13 @@ EOF
         chroot $CHROOT dpkg-query -W --showformat='${Package} ${Version}\n' \
                        | tee image/$LIVEDIR/filesystem.manifest &>> $LOGPATH
         cp $IMAGEDIR/$LIVEDIR/filesystem.manifest{,-desktop}
-        REMOVE='ubiquity casper user-setup discover1 xresprobe libdebian-installer4 os-prober'
-        for i in $REMOVE
-        do
-            sed -i "/${i}/d" $IMAGEDIR/casper/filesystem.manifest-desktop
+        REMOVE='ubiquity casper user-setup discover1 xresprobe \
+                libdebian-installer4 os-prober $LIVECD'
+        for package in $REMOVE; do
+            sed -i "/${package}/d" $IMAGEDIR/casper/filesystem.manifest-desktop
+        done
+        for package in $REMOVE; do
+            echo $package >> $IMAGEDIR/casper/filesystem.manifest-remove
         done
     fi
 }
@@ -282,14 +284,14 @@ function build_cd_image {
     echo " * Building CD Image..."
     echo "   $(date +%H:%M:%S) (creating squashfs image)"
     mksquashfs $CHROOT $IMAGEDIR/$LIVEDIR/filesystem.squashfs \
-               -noappend -no-progress -b $BLOCKSIZE &>> $LOGPATH
+               -comp lzo -noappend -no-progress &>> $LOGPATH
     echo "   $(date +%H:%M:%S) (creating md5sums)"
     (cd $IMAGEDIR && find . -type f -print0 | xargs -0 md5sum > md5sum.txt)
     echo "   $(date +%H:%M:%S) (creating iso image)"
     cd $IMAGEDIR
     genisoimage -quiet -r -V "$IMAGE_NAME" -cache-inodes -J -l -b \
-                isolinux/isolinux.bin -input-charset utf8 \
-                -c isolinux/boot.cat -no-emul-boot -boot-load-size 4 \
+                boot/isolinux/isolinux.bin -input-charset utf8 \
+                -c boot/isolinux/boot.cat -no-emul-boot -boot-load-size 4 \
                 -boot-info-table -o $ISOPATH/$ISONAME \
                 . &>> $LOGPATH ; cd ..
     if [ "$ISOHYBRID" = "yes" ]; then
@@ -348,6 +350,10 @@ if [ "$2" = "updatecache" ]; then
     updatecache
     exit
 fi
+
+# TODO: Some reporting, like top 10 biggest packages.
+# Perhaps also store a compressed copy of /var/lib/dpkg for analysys.
+# Also possibly a debsums report
 
 trap catch_break 2
 
