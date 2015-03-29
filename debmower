@@ -41,11 +41,11 @@ fi
 
 # Defaults
 # This is the Debmower Version used in logs
-DEBMOWER="0.03~pre1"
+DEBMOWER="0.03"
 # debian, ubuntu, maybe one day fedora?
 SYSTEM="ubuntu"
 # eg, 32768
-BLOCKSIZE="32768"
+BLOCKSIZE="65536"
 # eg, ubuntu-precise, custom-disk
 NAME="$SYSTEM-custom-spin"
 # Version of /your/ disc/release
@@ -77,6 +77,7 @@ if [ "$SYSTEM" = "debian" ]; then
     LIVEDIR="live"
     # eg, squeeze, wheezy
     RELEASE="squeeze"
+    CACHEIMG=$RELEASE-$ARCH
     # eg, linux-image-686
     KERNEL="linux-image-686"
     # LIVECD should ideally specify one meta-package:
@@ -104,6 +105,7 @@ if [ "$SYSTEM" = "ubuntu" ]; then
     LIVEDIR="casper"
     # eg, precise, trusty
     RELEASE="trusty"
+    CACHEIMG=$RELEASE-$ARCH
     # eg, linux-image-generic
     KERNEL="linux-image-generic"
     # LIVECD should ideally specify one meta-package:
@@ -133,7 +135,8 @@ if [ "$CONFIG" != "" ]; then
 else
     echo "No configuration specified, continuing with defaults..."
 fi
-echo -e "Debmower, version $DEBMOWER building $NAME\n"
+
+echo -e "Debmower version $DEBMOWER, building $NAME\n"
 echo    " - We're building a $RELEASE release of $SYSTEM."
 
 function initenv {
@@ -165,17 +168,24 @@ function initenv {
         #CHROOT="/dev/shm/$CHROOT"
         ln -s -p /dev/shm/$CHROOT /dev/shm/$CHROOT
     else
+        # For now, squashfs will be default
+        mkdir -p /dev/shm/debmower
         mkdir -p $CHROOT
+        mkdir -p /mnt/debmower/squashfs
+        mount $CACHEDIR/$CACHEIMG.squashfs /mnt/debmower/squashfs
+        unionfs-fuse -o cow,max_files=32768,use_ino,suid,dev \
+                     /dev/shm/debmower=RW:/mnt/debmower/squashfs=RO \
+                     $CHROOT
     fi
     mkdir -p $CHROOT/dev/pts $CHROOT/proc/pts $IMAGEDIR \
              $IMAGEDIR/$LIVEDIR $IMAGEDIR/syslinux $CHROOT/etc/apt
     mount --bind /dev $CHROOT/dev
     mount --bind /proc $CHROOT/proc
     mount --bind /dev/pts $CHROOT/dev/pts
-    if [ ! -f $CACHEDIR/$RELEASE-$ARCH.tar.bz2 ]; then
+    if [ ! -f $CACHEDIR/$CACHEIMG.tar.bz2 ]; then
         updatecache
     fi
-    tar -xf $CACHEDIR/$RELEASE-$ARCH.tar.bz2 -C $CHROOT &>> $LOGPATH
+    #tar -xf $CACHEDIR/$CACHEIMG.tar.bz2 -C $CHROOT &>> $LOGPATH
     cp /etc/resolv.conf $CHROOT/etc
     echo "   $(date +%H:%M:%S) (setting up APT sources)"
     sed -e "s/RELEASE/$RELEASE/g" $TEMPLATE/sources.list \
@@ -285,7 +295,7 @@ function build_cd_image {
     echo " * Building CD Image..."
     echo "   $(date +%H:%M:%S) (creating squashfs image)"
     mksquashfs $CHROOT $IMAGEDIR/$LIVEDIR/filesystem.squashfs \
-               -comp lzo -noappend -no-progress &>> $LOGPATH
+               -b $BLOCKSIZE -comp lzo -noappend -no-progress &>> $LOGPATH
     echo "   $(date +%H:%M:%S) (creating md5sums)"
     (cd $IMAGEDIR && find . -type f -print0 | xargs -0 md5sum > md5sum.txt)
     echo "   $(date +%H:%M:%S) (creating iso image)"
@@ -300,7 +310,11 @@ function build_cd_image {
         isohybrid --uefi $ISONAME &>> $LOGPATH
     fi
     echo "   $(date +%H:%M:%S) (cleaning up)"
-    rm -rf $CHROOT
+    #rm -rf $CHROOT
+    umount -l $CHROOT
+    umount -l /mnt/debmower/squashfs
+    rm -rf /dev/shm/debmower
+    rm -rf /mnt/debmower
     #rm -rf $IMAGEDIR
 }
 
