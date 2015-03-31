@@ -65,7 +65,7 @@ RAMDISK="no"
 # Where to log stuff
 LOGPATH=/var/log/debmower.$$
 # Architecture (i386, amd64, ppc, armhf)
-ARCH="i386"
+ARCH="amd64"
 # What kind of image are we building? iso, usb
 IMAGETYPE="iso"
 
@@ -110,7 +110,8 @@ if [ "$SYSTEM" = "ubuntu" ]; then
     KERNEL="linux-image-generic"
     # LIVECD should ideally specify one meta-package:
     LIVECD="ubiquity casper user-setup xresprobe libdebian-installer4 \
-            os-prober ubiquity-frontend-gtk ubiquity-slideshow-ubuntu"
+            os-prober ubiquity-frontend-gtk ubiquity-slideshow-ubuntu \
+            libdevmapper-event1.02.1 ubiquity-slideshow-ubuntu"
     # MAINMETA should ideally specify one meta-package:
     MAINMETA="ubuntu-desktop"
     # how this system installs packages, the space at the end is important
@@ -142,7 +143,7 @@ echo    " - We're building a $RELEASE release of $SYSTEM."
 function initenv {
     # Initialise environment
     echo " * Initialising environment..."
-    echo "" &>> $LOGPATH
+    echo "" &> $LOGPATH
     echo "   $(date +%H:%M:%S) (cleaning up previously used image source)"
     rm -rf $IMAGEDIR $CHROOT
     echo "   $(date +%H:%M:%S) (setting up base system)"
@@ -168,7 +169,6 @@ function initenv {
         #CHROOT="/dev/shm/$CHROOT"
         ln -s -p /dev/shm/$CHROOT /dev/shm/$CHROOT
     else
-        # For now, squashfs will be default
         mkdir -p /dev/shm/debmower
         mkdir -p $CHROOT
         mkdir -p /mnt/debmower/squashfs
@@ -182,10 +182,9 @@ function initenv {
     mount --bind /dev $CHROOT/dev
     mount --bind /proc $CHROOT/proc
     mount --bind /dev/pts $CHROOT/dev/pts
-    if [ ! -f $CACHEDIR/$CACHEIMG.tar.bz2 ]; then
+    if [ ! -f $CACHEDIR/$CACHEIMG.squashfs ]; then
         updatecache
     fi
-    #tar -xf $CACHEDIR/$CACHEIMG.tar.bz2 -C $CHROOT &>> $LOGPATH
     cp /etc/resolv.conf $CHROOT/etc
     echo "   $(date +%H:%M:%S) (setting up APT sources)"
     sed -e "s/RELEASE/$RELEASE/g" $TEMPLATE/sources.list \
@@ -262,13 +261,10 @@ EOF
     # TODO: If memtest86+.bin is installed in the chroot, use it:
     # cp /boot/memtest86+.bin $IMAGEDIR/boot/memtest
 
-    # TODO: If smb.img is installed in the chroot, use it:
-    #cp /boot/sbm.img $IMAGEDIR/boot/
-
     echo "   $(date +%H:%M:%S) (cleaning up)"
     chroot $CHROOT apt-get clean
     rm -rf $CHROOT/tmp/*
-    rm -f $CHROOT/etc/resolv.conf
+    echo "nameserver 127.0.1.1" > $CHROOT/etc/resolv.conf
     umount -l -f $CHROOT/proc
     umount -l -f $CHROOT/dev
     echo "localhost" > $CHROOT/etc/hostname
@@ -281,7 +277,9 @@ EOF
                        | tee image/$LIVEDIR/filesystem.manifest &>> $LOGPATH
         cp $IMAGEDIR/$LIVEDIR/filesystem.manifest{,-desktop}
         REMOVE="ubiquity casper user-setup discover1 xresprobe \
-                libdebian-installer4 os-prober $LIVECD"
+                libdebian-installer4 os-prober apt-clone archdetect-deb \
+                dpkg-repack localechooser-data lvm2 python3-icu rdate ubiquity-casper\
+                watershed ubiquity-ubuntu-artwork $LIVECD"
         for package in $REMOVE; do
             sed -i "/${package}/d" $IMAGEDIR/casper/filesystem.manifest-desktop
         done
@@ -300,15 +298,18 @@ function build_cd_image {
     (cd $IMAGEDIR && find . -type f -print0 | xargs -0 md5sum > md5sum.txt)
     echo "   $(date +%H:%M:%S) (creating iso image)"
     cd $IMAGEDIR
-    genisoimage -quiet -r -V "$IMAGE_NAME" -cache-inodes -J -l -b \
-                boot/isolinux/isolinux.bin -input-charset utf8 \
+    xorriso -as mkisofs -r -V "$IMAGE_NAME" -J -l \
+                -isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin \
+                -b bootisolinux/isolinux.bin -input-charset utf8 \
                 -c boot/isolinux/boot.cat -no-emul-boot -boot-load-size 4 \
+                 -eltorito-boot boot/isolinux/isolinux.bin \
                 -boot-info-table -o $ISOPATH/$ISONAME \
                 . &>> $LOGPATH ; cd ..
-    if [ "$ISOHYBRID" = "yes" ]; then
-        echo "   $(date +%H:%M:%S) (activating isohybrid)"
-        isohybrid --uefi $ISONAME &>> $LOGPATH
-    fi
+# Apparently, this is not needed anymore with xorriso. Test and remove.
+#    if [ "$ISOHYBRID" = "yes" ]; then
+#        echo "   $(date +%H:%M:%S) (activating isohybrid)"
+#        isohybrid -v --uefi $ISONAME &>> $LOGPATH
+#    fi
     echo "   $(date +%H:%M:%S) (cleaning up)"
     #rm -rf $CHROOT
     umount -l $CHROOT
