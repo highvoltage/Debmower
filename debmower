@@ -305,6 +305,11 @@ EOF
     # Write unique ID for this disk
     uuidgen > $IMAGEDIR/.disk/casper-uuid-generic
 
+    # Write, release-url, if set
+    if [ ! -z $RELEASE_NOTES_URL ]; then
+        echo $RELEASE_NOTES_URL > $IMAGEDIR/.disk/release_notes_url
+    fi
+
     # TODO: If memtest86+.bin is installed in the chroot, use it:
     # cp /boot/memtest86+.bin $IMAGEDIR/boot/memtest
 
