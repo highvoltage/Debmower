@@ -302,6 +302,9 @@ EOF
         cp -r $TEMPLATE/cdroot/. $IMAGEDIR/
     fi
 
+    # Write unique ID for this disk
+    uuidgen > $IMAGEDIR/.disk/casper-uuid-generic
+
     # TODO: If memtest86+.bin is installed in the chroot, use it:
     # cp /boot/memtest86+.bin $IMAGEDIR/boot/memtest
 

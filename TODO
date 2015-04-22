@@ -2,13 +2,12 @@ A kind of roadmap / todo list.
 
 [0.3]
  * Proper ramdisk (tmpfs) support
- * Add isohybrid support [done]
+ * [done] Add isohybrid support
  * Add a way to import keys for archives
- * Check if the archives are reachable before starting build
-   (no point if network is down)
+ * [done] fail if apt-get update doesn't succeed
  * Check if there's enough disk space on the right paths before starting
  * Rework Manifests so that it properly calculates packages to be removed
- * Store disk uuid in .disk/casper-uuid-generic
+ * [done] Store disk uuid in .disk/casper-uuid-generic
 
 [0.4]
  * Be able to specify packages that must be shipped on CD pool
