@@ -3,18 +3,20 @@ A kind of roadmap / todo list.
 [0.3]
  * Proper ramdisk (tmpfs) support
  * [done] Add isohybrid support
- * Add a way to import keys for archives
  * [done] fail if apt-get update doesn't succeed
  * Check if there's enough disk space on the right paths before starting
  * Rework Manifests so that it properly calculates packages to be removed
  * [done] Store disk uuid in .disk/casper-uuid-generic
+ * [done] Store release_notes_url if configured
 
 [0.4]
+ * Add a way to import keys for archives
  * Be able to specify packages that must be shipped on CD pool
  * Preconfigure for configuration management systems (bcfg2, puppet, cfengine,
    etc) generic item [TODO]
  * Implement an easy way to support configuration preseeds, most notable for
    stuff like grub, java plugins, etc
+ * Reduce needs for templates to minimum
 
 [future]
  * Possible Fedora support using yum + febootstrap
