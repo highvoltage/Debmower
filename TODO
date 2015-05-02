@@ -22,6 +22,8 @@ A kind of roadmap / todo list.
 
 [future]
  * Possible Fedora support using yum + febootstrap
+ * Possible Debian GNU/Hurd 2015 support
+ * Possible Linux Mint support
  * Make debmower more resiliant to when things go wrong (stale proc, etc). Perhaps sandboxing?
  * Support hooks for custom scripts
  * Add target for KVM
