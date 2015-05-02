@@ -1,0 +1,18 @@
+Source: debmower
+Section: utils
+Priority: optional
+Maintainer: Jonathan Carter <jonathan@ubuntu.com>
+Build-Depends: debhelper (>= 7.0.50~)
+Standards-Version: 3.9.1
+Homepage: http://launchpad.net/debmower
+
+Package: debmower
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, debootstrap, syslinux, squashfs-tools, genisoimage, pbzip2, memtest86+
+Recommends: lxc, bridge-utils, sbm
+Description: Create custom Ubuntu and Debian-based systems 
+ Debmower is a script that allows a user to create custom
+ Debian and Ubuntu-based ISO images by installing Debian
+ packages in a filesystem that can later be installed using
+ a tool such as Ubiquity or Debian Installer.
+

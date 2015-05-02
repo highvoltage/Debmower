@@ -1,0 +1,29 @@
+debmower (0.02~ppa4) unstable; urgency=low
+
+  * 0.02 Release
+
+ -- Jonathan Carter <jonathan@ubuntu.com>  Tue, 05 Apr 2011 13:56:38 -0400
+
+debmower (0.02~ppa3) natty; urgency=low
+
+  * Enforce DEBIAN_FRONTEND
+
+ -- Jonathan Carter <jonathan@ubuntu.com>  Tue, 05 Apr 2011 13:03:39 -0400
+
+debmower (0.02~ppa2) natty; urgency=low
+
+  * Bug fixes
+
+ -- Jonathan Carter <jonathan@ubuntu.com>  Thu, 10 Mar 2011 15:18:06 -0500
+
+debmower (0.02~ppa1) natty; urgency=low
+
+  * Bug fixes, new version
+
+ -- Jonathan Carter <jonathan@ubuntu.com>  Thu, 24 Feb 2011 22:01:18 -0500
+
+debmower (0.01~ppa1) natty; urgency=low
+
+  * Initial release
+
+ -- Jonathan Carter <jonathan@ubuntu.com>  Tue, 21 Dec 2010 17:29:38 -0500

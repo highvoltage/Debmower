@@ -1,0 +1,3 @@
+debmower usr/sbin/
+debmower.conf etc/debmower/
+debmower-daemon usr/sbin/
