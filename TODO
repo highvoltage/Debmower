@@ -17,6 +17,7 @@ A kind of roadmap / todo list.
  * Implement an easy way to support configuration preseeds, most notable for
    stuff like grub, java plugins, etc
  * Reduce needs for templates to minimum
+ * html page for autorun.inf config
 
 [future]
  * Possible Fedora support using yum + febootstrap

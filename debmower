@@ -77,7 +77,7 @@ if [ "$CONFIG" != "" ]; then
     else
         echo "Specified configuration file not found, aborting..."
     exit
-     fi
+    fi
 else
     echo "No configuration specified, continuing with defaults..."
 fi
@@ -155,21 +155,23 @@ function initenv {
     echo "" > $LOGPATH.aptlog
     echo "debmower: $(date +%H:%M:%S) Preparing directories..." >> $LOGPATH
     rm -rf $IMAGEDIR $CHROOT
-    if [ "$RAMDISK" = "yes" ]; then
-    #TODO: check for valid ramdisk space etc
-        echo "   $(date +%H:%M:%S) (enabling a ramdisk build)"
+    echo "   $(date +%H:%M:%S) (enabling a ramdisk build)"
+    rm -rf /dev/shm/debmower
+    mkdir -p /dev/shm/debmower
+    mkdir -p $CHROOT
+    mkdir -p /mnt/debmower/squashfs
+    mount $CACHEDIR/$CACHEIMG.squashfs /mnt/debmower/squashfs
+
+    echo "debmower: $(date +%H:%M:%S) Mounting unionfs filesystem..." \
+    unionfs-fuse -o cow,max_files=32768,use_ino,suid,dev \
+                 /dev/shm/debmower=RW:/mnt/debmower/squashfs=RO \
+                 $CHROOT
+    if [ "$?" = "0" ]; then
+        echo "debmower: $(date +%H:%M:%S) ... unionfs mounting successful" \
+             >> $LOGPATH
     else
-        #TODO: Make a new tmpfs instead of using /dev/shm
-        rm -rf /dev/shm/debmower
-        mkdir -p /dev/shm/debmower
-        mkdir -p $CHROOT
-        mkdir -p /mnt/debmower/squashfs
-        echo "CACHEIMAGE is $CACHEIMG.squashfs"
-        mount $CACHEDIR/$CACHEIMG.squashfs /mnt/debmower/squashfs
-        unionfs-fuse -o cow,max_files=32768,use_ino,suid,dev \
-                     /dev/shm/debmower=RW:/mnt/debmower/squashfs=RO \
-                     $CHROOT
-        #TODO: Check that this mount process worked correctly
+        echo "debmower: $(date +%H:%M:%S) ... unionfs mounting failed, aborting..." \
+             >> $LOGPATH
     fi
     mkdir -p $CHROOT/dev/pts $CHROOT/proc/pts $IMAGEDIR \
              $IMAGEDIR/$LIVEDIR $IMAGEDIR/syslinux $CHROOT/etc/apt
@@ -310,8 +312,10 @@ EOF
         echo $RELEASE_NOTES_URL > $IMAGEDIR/.disk/release_notes_url
     fi
 
-    # TODO: If memtest86+.bin is installed in the chroot, use it:
-    # cp /boot/memtest86+.bin $IMAGEDIR/boot/memtest
+    # Copy memtest86:
+    if [ -f /boot/memtest86+.bin ]; then
+        cp /boot/memtest86+.bin $IMAGEDIR/isolinux/mt86plus
+    fi
 
     echo "debmower: $(date +%H:%M:%S) Cleaning up..." >> $LOGPATH
     chroot $CHROOT apt-get clean
@@ -385,13 +389,7 @@ function build_cd_image {
             PKG_POOL_SIZE="0M"
         fi
         ISO_SIZE=$(du -sh $ISOPATH/$ISONAME | awk '{print $1}')
-    fi 
-
-# Apparently, this is not needed anymore with xorriso. Test and remove.
-#    if [ "$ISOHYBRID" = "yes" ]; then
-#        echo "   $(date +%H:%M:%S) (activating isohybrid)"
-#        isohybrid -v --uefi $ISONAME &>> $LOGPATH
-#    fi
+    fi
 
     echo "debmower: $(date +%H:%M:%S) Cleaning up..." >> $LOGPATH
     umount -l $CHROOT
@@ -427,12 +425,9 @@ function updatecache {
     umount -l $CHROOT/dev/pts
     umount -l $CHROOT/dev
     echo "debmower: ... done" &>> $LOGPATH
-    # generat squashfs for future ramdisk use
+    # generate squashfs for future ramdisk use
     echo " * $(date +%H:%M:%S) Creating $RELEASE squashfs..."
     mksquashfs $CHROOT $CACHEDIR/$RELEASE-$ARCH.squashfs -noappend
-    #FIXME: Perhaps if $RELEASE-$ARCH.squashfs doesn't match the $IMAGEFILE,
-    #       it should be symlinked or, the $IMAGEFILE should be created with
-    #       the desktop metapackage pre-installed. needs some thought.
     rm -rf "$CHROOT"
 
     umount -l tmpfs
@@ -443,9 +438,6 @@ function updatecache {
 }
 
 function generate_reports {
-   # TODO: Some reporting, like top 10 biggest packages.
-   # Perhaps also store a compressed copy of /var/lib/dpkg for analysys.
-   # Also possibly a debsums report
    echo "debmower: REPORT: Main meta used is $MAINMETA and live is $LIVECD" >> $LOGPATH
    echo "debmower: REPORT: This $IMAGETYPE uses $COMP for squashfs compression" >> $LOGPATH
    echo "debmower: REPORT: Total packages in manifest: $MANIFEST_PKG packages" \
