@@ -1,0 +1,7 @@
+# Ubuntu
+deb http://archive.ubuntu.com/ubuntu RELEASE main universe multiverse restricted
+deb http://archive.ubuntu.com/ubuntu RELEASE-backports main universe multiverse restricted
+deb http://archive.ubuntu.com/ubuntu RELEASE-updates main universe multiverse restricted
+
+# AIMS Desktop PPA
+deb http://ppa.launchpad.net/aims/aims-desktop/ubuntu RELEASE main 
