@@ -1,15 +1,16 @@
 A kind of roadmap / todo list.
 
-[0.3]
- * Proper ramdisk (tmpfs) support
+[0.3] Released 2015-05-02
  * [done] Add isohybrid support
  * [done] fail if apt-get update doesn't succeed
- * Check if there's enough disk space on the right paths before starting
- * Rework Manifests so that it properly calculates packages to be removed
  * [done] Store disk uuid in .disk/casper-uuid-generic
  * [done] Store release_notes_url if configured
+ * hundreds of smaller changes that spanned from 2009 until 2015!
 
-[0.4]
+[0.4] Anticipated release date 2015-05-31
+ * Rework Manifests so that it properly calculates packages to be removed
+ * Check if there's enough disk space on the right paths before starting
+ * Proper ramdisk (tmpfs) support
  * Add a way to import keys for archives
  * Be able to specify packages that must be shipped on CD pool
  * Preconfigure for configuration management systems (bcfg2, puppet, cfengine,
