@@ -438,18 +438,18 @@ function updatecache {
 }
 
 function generate_reports {
-   echo "debmower: REPORT: Main meta used is $MAINMETA and live is $LIVECD" >> $LOGPATH
-   echo "debmower: REPORT: This $IMAGETYPE uses $COMP for squashfs compression" >> $LOGPATH
-   echo "debmower: REPORT: Total packages in manifest: $MANIFEST_PKG packages" \
-         >> $LOGPATH
-   echo "debmower: REPORT: Live package manifest: $MANIFEST_PKG_RM packages" \
-         >> $LOGPATH
-   echo "debmower: REPORT: Templates dir: $TEMPLATE" >> $LOGPATH
-   echo "debmower: REPORT: Built from cached image: $CACHEIMG" >> $LOGPATH
-   echo "debmower: REPORT: Squashfs image size is: $SQUASHFS_SIZE" >> $LOGPATH
-   echo "debmower: REPORT: Package pool size is: $PKG_POOL_SIZE" >> $LOGPATH
-   echo "debmower: REPORT: ISO size is $ISO_SIZE" >> $LOGPATH
-   echo "debmower: $(date +%H:%M:%S) All done." >> $LOGPATH
+    echo "debmower: REPORT: Main meta used is $MAINMETA and live is $LIVECD" >> $LOGPATH
+    echo "debmower: REPORT: This $IMAGETYPE uses $COMP for squashfs compression" >> $LOGPATH
+    echo "debmower: REPORT: Total packages in manifest: $MANIFEST_PKG packages" \
+          >> $LOGPATH
+    echo "debmower: REPORT: Live package manifest: $MANIFEST_PKG_RM packages" \
+          >> $LOGPATH
+    echo "debmower: REPORT: Templates dir: $TEMPLATE" >> $LOGPATH
+    echo "debmower: REPORT: Built from cached image: $CACHEIMG" >> $LOGPATH
+    echo "debmower: REPORT: Squashfs image size is: $SQUASHFS_SIZE" >> $LOGPATH
+    echo "debmower: REPORT: Package pool size is: $PKG_POOL_SIZE" >> $LOGPATH
+    echo "debmower: REPORT: ISO size is $ISO_SIZE" >> $LOGPATH
+    echo "debmower: $(date +%H:%M:%S) All done." >> $LOGPATH
 }
 
 if [ "$2" = "updatecache" ]; then
