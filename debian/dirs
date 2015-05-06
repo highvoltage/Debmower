@@ -1,1 +1,2 @@
 var/cache/debmower/dists
+var/log/debmower
