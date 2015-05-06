@@ -69,6 +69,8 @@ COMP="gzip" #gzip lzo xz
 UPDATE_INITRAMFS="no"
 # Auto remove packages that are marked as no longer needed
 AUTOREMOVE="yes"
+# Generate an ID for this build
+BUILD_ID=$(uuidgen -t)
 
 # Source configuration, if specified
 if [ "$CONFIG" != "" ]; then
