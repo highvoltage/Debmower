@@ -282,7 +282,16 @@ function setup_livecd {
     #cp /usr/lib/syslinux/vesamenu.c32 $IMAGEDIR/syslinux &>> $LOGPATH
     #cp /usr/lib/syslinux/isolinux.bin $IMAGEDIR/syslinux/syslinux.bin &>> $LOGPATH
     #cp $TEMPLATE/syslinux/* $IMAGEDIR/syslinux &>> $LOGPATH
-
+    echo "debmower: $(date +%H:%M:%S) Setting dbus machine ID..." >> $LOGPATH
+    dbus-uuidgen > $CHROOT/var/lib/dbus/machine-id
+    if [ "$?" = "0" ]; then
+        echo "debmower: $(date +%H:%M:%S) ... success" \
+             >> $LOGPATH
+    else
+        echo "debmower: $(date +%H:%M:%S) ... failed, please ensure that dbus is installed" \  
+             >> $LOGPATH
+        abort_build
+    fi
     if [ -f "$TEMPLATE/README.diskdefines" ]; then
         cp $TEMPLATE/README.diskdefines $IMAGEDIR/
     else
