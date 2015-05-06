@@ -38,12 +38,12 @@ fi
 
 # Defaults
 # This is the Debmower Version used in logs
-DEBMOWER="0.03"
-# debian, ubuntu, maybe one day fedora?
+DEBMOWER="0.04-in-development"
+# debian, ubuntu
 SYSTEM="ubuntu"
-# eg, 32768
+# eg, 16384, 32768
 BLOCKSIZE="65536"
-# eg, ubuntu-precise, custom-disk
+# eg, ubuntu-trusty, custom-disk
 NAME="$SYSTEM-custom-spin"
 # Version of /your/ disc/release
 VERSION="0.01"
@@ -380,7 +380,7 @@ function build_cd_image {
         abort_build
     else
         echo "debmower: $(date +%H:%M:%S) ... xorriso reports that iso generation was successfull" \
-        >> $LOGPATH
+ i           >> $LOGPATH
         SQUASHFS_SIZE=$(du -sh $IMAGEDIR/casper/filesystem.squashfs \
                         | awk '{print $1}')
         if [ -d "$IMAGEDIR/pool" ]; then
