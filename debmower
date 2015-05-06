@@ -58,7 +58,7 @@ CHROOT="/var/cache/debmower/chroot"
 IMAGEDIR="/var/cache/debmower/image"
 RAMDISK="no"
 # Where to log stuff
-LOGPATH=/var/log/debmower.$$
+LOGPATH=/var/log/debmower/build.$$
 # Architecture (i386, amd64, ppc, armhf)
 ARCH="amd64"
 # What kind of image are we building? iso, usb
@@ -154,10 +154,11 @@ function initenv {
     # Initialise environment
     echo "Debmower version $DEBMOWER, building $NAME, from $SYSTEM $RELEASE $ARCH packages" \
          > $LOGPATH
+    echo "debmower: this build ID is $BUILD_ID" >> $LOGPATH
     echo "" > $LOGPATH.aptlog
     echo "debmower: $(date +%H:%M:%S) Preparing directories..." >> $LOGPATH
     rm -rf $IMAGEDIR $CHROOT
-    echo "   $(date +%H:%M:%S) (enabling a ramdisk build)"
+    echo "debmower: $(date +%H:%M:%S) (enabling a ramdisk build)" >> $LOGPATH
     rm -rf /dev/shm/debmower
     mkdir -p /dev/shm/debmower
     mkdir -p $CHROOT
@@ -165,6 +166,7 @@ function initenv {
     mount $CACHEDIR/$CACHEIMG.squashfs /mnt/debmower/squashfs
 
     echo "debmower: $(date +%H:%M:%S) Mounting unionfs filesystem..." \
+          >> $LOGPATH
     unionfs-fuse -o cow,max_files=32768,use_ino,suid,dev \
                  /dev/shm/debmower=RW:/mnt/debmower/squashfs=RO \
                  $CHROOT
@@ -257,6 +259,13 @@ function system_install {
 }
 
 function setup_livecd {
+    # Create a manifest file if we use Ubiquity (or for now, Ubuntu, at least)
+    # We need to do this before the livecd packages are installed
+    if [ "$SYSTEM" = "ubuntu" ]; then
+        chroot $CHROOT dpkg-query -W --showformat='${Package} ${Version}\n' \
+                       | tee $IMAGEDIR/$LIVEDIR/filesystem.manifest \
+                         &>> $LOGPATH.manifest
+    fi
     # Set up Live CD
     echo "debmower: $(date +%H:%M:%S) Installing live packages..." >> $LOGPATH
     chroot $CHROOT $INSTALL $LIVECD &>> $LOGPATH.aptlog
@@ -285,6 +294,7 @@ function setup_livecd {
     #cp /usr/lib/syslinux/isolinux.bin $IMAGEDIR/syslinux/syslinux.bin &>> $LOGPATH
     #cp $TEMPLATE/syslinux/* $IMAGEDIR/syslinux &>> $LOGPATH
     echo "debmower: $(date +%H:%M:%S) Setting dbus machine ID..." >> $LOGPATH
+    mkdir -p $CHROOT/var/lib/dbus/
     dbus-uuidgen > $CHROOT/var/lib/dbus/machine-id
     if [ "$?" = "0" ]; then
         echo "debmower: $(date +%H:%M:%S) ... success" \
@@ -316,7 +326,7 @@ EOF
     fi
 
     # Write unique ID for this disk
-    uuidgen > $IMAGEDIR/.disk/casper-uuid-generic
+    echo $BUILD_ID > $IMAGEDIR/.disk/casper-uuid-generic
 
     # Write, release-url, if set
     if [ ! -z $RELEASE_NOTES_URL ]; then
@@ -342,8 +352,7 @@ EOF
     # Create a manifest file if we use Ubiquity (or for now, Ubuntu, at least)
     if [ "$SYSTEM" = "ubuntu" ]; then
         chroot $CHROOT dpkg-query -W --showformat='${Package} ${Version}\n' \
-                       | tee $IMAGEDIR/$LIVEDIR/filesystem.manifest \
-                         &>> $LOGPATH.manifest
+                       > $IMAGEDIR/$LIVEDIR/filesystem.manifest-afterlive
         MANIFEST_PKG=$(wc -l $IMAGEDIR/$LIVEDIR/filesystem.manifest | awk '{print $1}')
         cp $IMAGEDIR/$LIVEDIR/filesystem.manifest{,-desktop}
         REMOVE="ubiquity casper user-setup discover1 xresprobe \
@@ -360,6 +369,16 @@ EOF
         MANIFEST_PKG_RM=$(wc -l $IMAGEDIR/$LIVEDIR/filesystem.manifest-remove | \
                           awk '{print $1}')
     fi
+    if [ "$STORE_DPKGDB" = "yes" ]; then
+        mkdir -p /var/cache/debmower/builddata/$BUILD_ID/
+        mksquashfs $CHROOT/var/lib/dpkg /var/cache/debmower/builddata/$BUILD_ID/dpkgdb.squashfs \
+                   -noappend &>> $LOG_PATH
+    fi
+    echo "Top 10 biggest packages:" &>> $LOGPATH
+    chroot $CHROOT "dpkg-query -W --showformat='${Installed-Size}\t${Package}\n' | sort -nr | head -n 10" \
+           &>> $LOGPATH
+    echo "Debsums report, anything listed here is usually a bad thing:" >> $LOGPATH
+    chroot $CHROOT "debsums | grep -v OK" &>> $LOGPATH
 }
 
 function build_cd_image {
@@ -438,7 +457,7 @@ function updatecache {
     echo "debmower: ... done" &>> $LOGPATH
     # generate squashfs for future ramdisk use
     echo " * $(date +%H:%M:%S) Creating $RELEASE squashfs..."
-    mksquashfs $CHROOT $CACHEDIR/$RELEASE-$ARCH.squashfs -noappend
+    mksquashfs $CHROOT $CACHEDIR/$RELEASE-$ARCH.squashfs -noappend #FIXME logs?
     rm -rf "$CHROOT"
 
     umount -l tmpfs
