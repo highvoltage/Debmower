@@ -163,8 +163,10 @@ function initenv {
     echo "debmower: $(date +%H:%M:%S) Preparing directories..." >> $LOGPATH
     rm -rf $IMAGEDIR $CHROOT
     echo "debmower: $(date +%H:%M:%S) (enabling a ramdisk build)" >> $LOGPATH
-    rm -rf /dev/shm/debmower
-    mkdir -p /dev/shm/debmower
+
+    mkdir -p /tmp/debmower
+    mount -t tmpfs tmpfs /tmp/debmower
+
     mkdir -p $CHROOT
     mkdir -p /mnt/debmower/squashfs
     mount $CACHEDIR/$CACHEIMG.squashfs /mnt/debmower/squashfs
@@ -172,14 +174,10 @@ function initenv {
     echo "debmower: $(date +%H:%M:%S) Mounting unionfs filesystem..." \
           >> $LOGPATH
     unionfs-fuse -o cow,max_files=32768,use_ino,suid,dev \
-                 /dev/shm/debmower=RW:/mnt/debmower/squashfs=RO \
+                 /tmp/debmower=RW:/mnt/debmower/squashfs=RO \
                  $CHROOT
     abort_on_fail
-    mkdir -p $CHROOT/dev/pts $CHROOT/proc/pts $IMAGEDIR \
-             $IMAGEDIR/$LIVEDIR $IMAGEDIR/syslinux $CHROOT/etc/apt
-    mount --bind /dev $CHROOT/dev
-    mount --bind /proc $CHROOT/proc
-    mount --bind /dev/pts $CHROOT/dev/pts
+    chroot_bind_mounts
     echo "none none none none 0 0" > $CHROOT/etc/mtab
     if [ ! -f $CACHEDIR/$CACHEIMG.squashfs ]; then
         updatecache
@@ -228,7 +226,7 @@ function setup_livecd {
     echo "debmower: $(date +%H:%M:%S) Installing live packages..." >> $LOGPATH
     chroot $CHROOT $INSTALL $LIVECD &>> $LOGPATH.aptlog
     abort_on_fail
-    echo "debmower: $(date +%H:%M:%S) Configuring live kernels..." >> $LOGPATH
+    echo "debmower: $(date +%H:%M:%S) Setting up live kernels..." >> $LOGPATH
     if [ "$UPDATE_INITRAMFS" = "yes" ]; then
         chroot $CHROOT update-initramfs -u &>> $LOGPATH
     fi
@@ -240,13 +238,14 @@ function setup_livecd {
     lzma $IMAGEDIR/$LIVEDIR/initrd.img &>> $LOGPATH
     mv $IMAGEDIR/$LIVEDIR/initrd.img.lzma $IMAGEDIR/$LIVEDIR/initrd.lz
     echo "debmower: $(date +%H:%M:%S) Copying cdimage boot files and artwork..." \
-    >> $LOGPATH
+          >> $LOGPATH
     cp  -r $TEMPLATE/* $IMAGEDIR &>> $LOGPATH
     if [ "$GENISOLINUX_STRUCTURE" = "yes" ]; then
         echo "debmower: $(date +%H:%M:%S) Configuring isolinux structure..." >> $LOGPATH
         cp /usr/lib/ISOLINUX/isolinux.bin /usr/lib/syslinux/modules/bios/ldlinux.c32 \
            /usr/lib/syslinux/modules/bios/vesamenu.c32 /usr/lib/syslinux/modules/bios/libcom32.c32 \
-           /usr/lib/syslinux/modules/bios/libutil.c32 \
+           /usr/lib/syslinux/modules/bios/libutil.c32 /usr/lib/syslinux/modules/bios/gfxboot.c32 \
+           /usr/lib/syslinux/modules/bios/chain.c32 \
            $IMAGEDIR/isolinux/ &>> $LOGPATH ; abort_on_fail
     fi
 
@@ -292,9 +291,7 @@ EOF
     chroot $CHROOT apt-get clean
     rm -rf $CHROOT/tmp/*
     echo "nameserver 127.0.1.1" > $CHROOT/etc/resolv.conf
-    umount -l -f $CHROOT/proc
-    umount -l -f $CHROOT/dev/pts
-    umount -l -f $CHROOT/dev
+    chroot_bind_unmounts
     echo "localhost" > $CHROOT/etc/hostname
     if [ "$AUTOREMOVE" = "yes" ]; then
         chroot $CHROOT apt-get -qq -y autoremove &>> $LOGPATH.aptlog
@@ -327,8 +324,9 @@ EOF
     echo "Top 10 biggest packages:" &>> $LOGPATH
     chroot $CHROOT dpkg-query -W --showformat='${Installed-Size}\t${Package}\n' | sort -nr | head -n 10 \
            &>> $LOGPATH
-    echo "debsums report, anything listed here is usually a bad thing:" >> $LOGPATH
-    debsums -c -r $CHROOT | grep -v OK &>> $LOGPATH
+    echo "debmower: debsums report:" >> $LOGPATH
+    debsums -c -r $CHROOT &>> $LOGPATH
+    echo "End of debsums report."
 }
 
 
@@ -360,7 +358,8 @@ function build_cd_image {
     echo "debmower: $(date +%H:%M:%S) Cleaning up..." >> $LOGPATH
     umount -l $CHROOT
     umount -l /mnt/debmower/squashfs
-    rm -rf /dev/shm/debmower
+    umount -l -f /tmp/debmower 
+    rm -rf /tmp/debmower
     rm -rf /mnt/debmower
     if [ ! "$KEEP_IMAGEDIR" = "yes" ]; then
         rm -rf $IMAGEDIR
@@ -371,36 +370,30 @@ function build_cd_image {
 function updatecache {
     mkdir -p $CACHEDIR
     cd $CACHEDIR
-    mkdir -p tmpfs
-    mount -t tmpfs tmpfs tmpfs
+    mkdir -p /tmp/debmower
+    mount -t tmpfs tmpfs /tmp/debmower
 
     echo " * $(date +%H:%M:%S) Performing initial debootstrapping for $RELEASE..."
     CHROOT=tmpfs/chroot
     debootstrap $RELEASE $CHROOT $DEBOOTSTRAP_MIRROR &>> $LOGPATH
     echo " * $(date +%H:%M:%S) Installing standard packages..." \
          &>> $LOGFILE.updatecache
-    mount --bind /proc $chroot/proc
-    mount --bind /dev $chroot/dev
-    mount --bind /dev/pts $CHROOT/dev/pts
+    chroot_bind_mounts
     if [ "$CACHEPACKAGES" != "" ]; then
         chroot $CHROOT apt-get --force-yes -qq -y $CACHEPACKAGES \
         &>> $LOGPATH
     fi
     echo "debmower: cleaning up..." &>> $LOGPATH
     chroot $CHROOT apt-get clean
-    umount -l $CHROOT/proc
-    umount -l $CHROOT/dev/pts
-    umount -l $CHROOT/dev
+    chroot_bind_unmounts
     echo "debmower: ... done" &>> $LOGPATH
     # generate squashfs for future ramdisk use
     echo " * $(date +%H:%M:%S) Creating $RELEASE squashfs..."
     mksquashfs $CHROOT $CACHEDIR/$CACHEIMG.squashfs -noappend #FIXME logs? abortonfail?
     rm -rf "$CHROOT"
-
-    umount -l tmpfs
-    rmdir tmpfs
+    umount -l /tmp/debmower
+    rmdir /tmp/debmower
     cd ..
-
     echo "debmower: ... done" &>> $LOGPATH
 }
 
@@ -424,10 +417,10 @@ function generate_reports {
 function abort_build {
     echo "debmower: $(date +%H:%M:%S) Aborting..." &>> $LOGPATH
     umount -f -l /mnt/debmower/squashfs
-    umount -f -l $CHROOT/dev/pts
-    umount -f -l $CHROOT/dev
-    umount -f -l $CHROOT/proc
+    chroot_bind_unmounts
     umount -f -l $CHROOT
+    umount /tmp/debmower 
+    rmdir /tmp/debmower/
     exit 299
 }
 
@@ -443,6 +436,24 @@ function abort_on_fail {
         # exit with generic error
         exit 1
     fi
+}
+
+
+function chroot_bind_mounts {
+    mkdir -p $CHROOT/dev/pts $CHROOT/proc/pts \
+             $IMAGEDIR/$LIVEDIR $IMAGEDIR/syslinux $CHROOT/etc/apt
+    mount --bind /proc $CHROOT/proc
+    mount --bind /sys $CHROOT/sys
+    mount --bind /dev $CHROOT/dev
+    mount --bind /dev/pts $CHROOT/dev/pts
+}
+
+
+function chroot_bind_unmounts {
+    umount -f -l $CHROOT/dev/pts
+    umount -f -l $CHROOT/dev
+    umount -f -l $CHROOT/sys
+    umount -f -l $CHROOT/proc
 }
 
 
