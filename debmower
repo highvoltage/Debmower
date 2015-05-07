@@ -375,7 +375,7 @@ function updatecache {
     mkdir -p $CACHEDIR
     cd $CACHEDIR
     mkdir -p /tmp/debmower
-    # You can set TMPFS_SIZE=1000m, to set custom tmpfs size 
+    # You can set TMPFS_SIZE=1000m, to set custom tmpfs size
     if [ -z "$TMPFS_SIZE" ]; then
         SIZEOPT="-o size=$TMPFS_SIZE"
     fi
