@@ -203,6 +203,9 @@ function initenv {
 function system_install {
     # Ubuntu 14.04 workarounds...
     touch $CHROOT/etc/init.d/{systemd-logind,whoopsie,modemmanager}
+    echo "debmower: $(date +%H:%M:%S) Setting dbus machine ID..." >> $LOGPATH
+    mkdir -p $CHROOT/var/lib/dbus/
+    dbus-uuidgen > $CHROOT/var/lib/dbus/machine-id ; abort_on_fail
     echo "debmower: $(date +%H:%M:%S) Installing main meta-package..." \
          &>> $LOGPATH
     chroot $CHROOT ldconfig
@@ -253,9 +256,6 @@ function setup_livecd {
            $IMAGEDIR/isolinux/ &>> $LOGPATH ; abort_on_fail
     fi
 
-    echo "debmower: $(date +%H:%M:%S) Setting dbus machine ID..." >> $LOGPATH
-    mkdir -p $CHROOT/var/lib/dbus/
-    dbus-uuidgen > $CHROOT/var/lib/dbus/machine-id ; abort_on_fail
     if [ -f "$TEMPLATE/README.diskdefines" ]; then
         cp $TEMPLATE/README.diskdefines $IMAGEDIR/
     else
@@ -295,6 +295,7 @@ EOF
     chroot $CHROOT apt-get clean
     rm -rf $CHROOT/tmp/*
     echo "nameserver 127.0.1.1" > $CHROOT/etc/resolv.conf
+    chroot $CHROOT rm -rf /var/lib/dbus/machine-id /tmp/*
     chroot_bind_unmounts
     echo "localhost" > $CHROOT/etc/hostname
     if [ "$AUTOREMOVE" = "yes" ]; then
@@ -396,7 +397,7 @@ function updatecache {
     echo "debmower: ... done" &>> $LOGPATH
     # generate squashfs for future ramdisk use
     echo " * $(date +%H:%M:%S) Creating $RELEASE squashfs..."
-    mksquashfs $CHROOT $CACHEDIR/$CACHEIMG.squashfs -noappend #FIXME logs? abortonfail?
+    mksquashfs $CHROOT $CACHEDIR/$CACHEIMG.squashfs -noappend -no-progress ; abort_on_fail
     rm -rf "$CHROOT"
     umount -l /tmp/debmower
     rmdir /tmp/debmower
@@ -440,8 +441,7 @@ function abort_on_fail {
         echo "debmower: ... step has failed," \
         >> $LOGPATH
         echo "          There is no point in going on." >> $LOGPATH
-        # exit with generic error
-        exit 1
+        abort_build
     fi
 }
 
@@ -461,6 +461,11 @@ function chroot_bind_unmounts {
     umount -f -l $CHROOT/dev
     umount -f -l $CHROOT/sys
     umount -f -l $CHROOT/proc
+    # This could replace the above, but relies that 'debmower' is in the path,
+    # which might not always be the case so we keep the above.
+    for mountpoint in $(mount | grep debmower | awk '{print $3}');
+        do umount -f -l $mountpoint;
+    done
 }
 
 
