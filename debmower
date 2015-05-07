@@ -306,16 +306,12 @@ EOF
                        > $IMAGEDIR/$LIVEDIR/filesystem.manifest-afterlive
         MANIFEST_PKG=$(wc -l $IMAGEDIR/$LIVEDIR/filesystem.manifest | awk '{print $1}')
         cp $IMAGEDIR/$LIVEDIR/filesystem.manifest{,-desktop}
-        REMOVE="ubiquity casper user-setup discover1 xresprobe \
-                libdebian-installer4 os-prober apt-clone archdetect-deb \
-                dpkg-repack localechooser-data lvm2 python3-icu rdate ubiquity-casper \
-                watershed ubiquity-ubuntu-artwork libdevmapper-event1.02.1 \
-                ubiquity-slideshow-ubuntu $LIVECD"
+        diff $IMAGEDIR/$LIVEDIR/filesystem.manifest $IMAGEDIR/$LIVEDIR/filesystem.manifest-afterlive \
+                     | grep ">" | sed "s/> //g" > $IMAGEDIR/$LIVEDIR/filesystem.manifest-remove
+        rm $IMAGEDIR/$LIVEDIR/filesystem.manifest-afterlive
+        REMOVE=$(awk '{print $1}' $IMAGEDIR/$LIVEDIR/filesystem.manifest-remove)
         for package in $REMOVE; do
             sed -i "/${package}/d" $IMAGEDIR/$LIVEDIR/filesystem.manifest-desktop
-        done
-        for package in $REMOVE; do
-            echo $package >> $IMAGEDIR/$LIVEDIR/filesystem.manifest-remove
         done
         MANIFEST_PKG_RM=$(wc -l $IMAGEDIR/$LIVEDIR/filesystem.manifest-remove | \
                           awk '{print $1}')
