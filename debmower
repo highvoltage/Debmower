@@ -359,7 +359,7 @@ function build_cd_image {
     echo "debmower: $(date +%H:%M:%S) Cleaning up..." >> $LOGPATH
     umount -l $CHROOT
     umount -l /mnt/debmower/squashfs
-    umount -l -f /tmp/debmower 
+    umount -l -f /tmp/debmower
     rm -rf /tmp/debmower
     rm -rf /mnt/debmower
     if [ ! "$KEEP_IMAGEDIR" = "yes" ]; then
@@ -427,7 +427,7 @@ function abort_build {
     umount -f -l /mnt/debmower/squashfs
     chroot_bind_unmounts
     umount -f -l $CHROOT
-    umount /tmp/debmower 
+    umount /tmp/debmower
     rmdir /tmp/debmower/
     exit 299
 }
@@ -464,7 +464,7 @@ function chroot_bind_unmounts {
     # This could replace the above, but relies that 'debmower' is in the path,
     # which might not always be the case so we keep the above.
     for mountpoint in $(mount | grep debmower | awk '{print $3}');
-        do umount -f -l $mountpoint;
+        do umount -f -l $mountpoint; &> /dev/null
     done
 }
 
