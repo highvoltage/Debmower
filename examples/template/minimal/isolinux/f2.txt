@@ -1,0 +1,5 @@
+0fF2 PAGE07                                                09F207
+
+Here you can list additional information about your system, such as system requirements.
+
+Press F1control and F then 1 for the help index, or ENTER to boot.
