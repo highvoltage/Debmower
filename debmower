@@ -71,6 +71,8 @@ UPDATE_INITRAMFS="no"
 AUTOREMOVE="yes"
 # Generate an ID for this build
 BUILD_ID=$(uuidgen -t)
+# Populate /isolinux
+GENISOLINUX_STRUCTURE="yes"
 
 # Source configuration, if specified
 if [ "$CONFIG" != "" ]; then
@@ -220,7 +222,7 @@ function initenv {
 }
 
 function abort_build {
-    echo "debmower: $(date +%H:%M:%S) Aborting..."
+    echo "debmower: $(date +%H:%M:%S) Aborting..." &>> $LOGPATH
     umount -f -l /mnt/debmower/squashfs
     umount -f -l $CHROOT/dev/pts
     umount -f -l $CHROOT/dev
@@ -283,7 +285,7 @@ function setup_livecd {
     if [ "$UPDATE_INITRAMFS" = "yes" ]; then
         chroot $CHROOT update-initramfs -u &>> $LOGPATH
     fi
-    # The initrd needs to be compressed with lzmo, so we need to decompress it from
+    # The initrd needs to be compressed with lzma, so we need to decompress it from
     # the default gzip first.
     cp $CHROOT/boot/vmlinuz-* $IMAGEDIR/$LIVEDIR/vmlinuz.efi &>> $LOGPATH
     cp $CHROOT/boot/initrd.img-* $IMAGEDIR/$LIVEDIR/initrd.img.gz &>> $LOGPATH
@@ -292,12 +294,15 @@ function setup_livecd {
     mv $IMAGEDIR/$LIVEDIR/initrd.img.lzma $IMAGEDIR/$LIVEDIR/initrd.lz
     echo "debmower: $(date +%H:%M:%S) Copying cdimage boot files and artwork..." \
     >> $LOGPATH
-    #cp /usr/lib/syslinux/vesamenu.c32 $IMAGEDIR/syslinux &>> $LOGPATH
-    cp  -r $TEMPLATE/isolinux $IMAGEDIR &>> $LOGPATH
-    cp /usr/lib/ISOLINUX/isolinux.bin /usr/lib/syslinux/modules/bios/ldlinux.c32 \
-       /usr/lib/syslinux/modules/bios/vesamenu.c32 /usr/lib/syslinux/modules/bios/libcom32.c32 \
-       /usr/lib/syslinux/modules/bios/libutil.c32 \
-       $IMAGEDIR/isolinux/ &>> $LOGPATH
+    echo "debmower: $(date +%H:%M:%S) Configuring isolinux structure..." >> $LOGPATH 
+    cp  -r $TEMPLATE/* $IMAGEDIR &>> $LOGPATH
+    if [ "$GENISOLINUX_STRUCTURE" = "yes" ]; then 
+        cp /usr/lib/ISOLINUX/isolinux.bin /usr/lib/syslinux/modules/bios/ldlinux.c32 \
+           /usr/lib/syslinux/modules/bios/vesamenu.c32 /usr/lib/syslinux/modules/bios/libcom32.c32 \
+           /usr/lib/syslinux/modules/bios/libutil.c32 \
+           $IMAGEDIR/isolinux/ &>> $LOGPATH
+    fi
+
     echo "debmower: $(date +%H:%M:%S) Setting dbus machine ID..." >> $LOGPATH
     mkdir -p $CHROOT/var/lib/dbus/
     dbus-uuidgen > $CHROOT/var/lib/dbus/machine-id
@@ -417,7 +422,7 @@ function build_cd_image {
     else
         echo "debmower: $(date +%H:%M:%S) ... xorriso reports that iso generation was successfull" \
  i           >> $LOGPATH
-        SQUASHFS_SIZE=$(du -sh $IMAGEDIR/casper/filesystem.squashfs \
+        SQUASHFS_SIZE=$(du -sh $IMAGEDIR/$LIVEDIR/filesystem.squashfs \
                         | awk '{print $1}')
         if [ -d "$IMAGEDIR/pool" ]; then
             PKG_POOL_SIZE=$(du -sh $IMAGEDIR/pool | awk '{print $1}')
@@ -463,7 +468,7 @@ function updatecache {
     echo "debmower: ... done" &>> $LOGPATH
     # generate squashfs for future ramdisk use
     echo " * $(date +%H:%M:%S) Creating $RELEASE squashfs..."
-    mksquashfs $CHROOT $CACHEDIR/$RELEASE-$ARCH.squashfs -noappend #FIXME logs?
+    mksquashfs $CHROOT $CACHEDIR/$CACHEIMG.squashfs -noappend #FIXME logs? abortonfail?
     rm -rf "$CHROOT"
 
     umount -l tmpfs
