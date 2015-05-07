@@ -211,6 +211,10 @@ function system_install {
     echo "debmower: $(date +%H:%M:%S) Installing kernel..." >> $LOGPATH
     DEBIAN_FRONTEND=$DEBIAN_FRONTEND chroot $CHROOT $INSTALL \
                     $KERNEL &>> $LOGPATH.aptlog ; abort_on_fail
+    echo "debmower: tmpfs size is $(df -h /tmp/debmower | grep debmower | awk '{print $2}')" \
+         &>> $LOGPATH
+    echo "debmower: tmpfs usage at end was $(df -h /tmp/debmower | grep debmower | awk '{print $4}')" \
+         &>> $LOGPATH
 }
 
 
@@ -326,7 +330,7 @@ EOF
            &>> $LOGPATH
     echo "debmower: debsums report:" >> $LOGPATH
     debsums -c -r $CHROOT &>> $LOGPATH
-    echo "End of debsums report."
+    echo "End of debsums report." >> $LOGPATH
 }
 
 
@@ -371,8 +375,11 @@ function updatecache {
     mkdir -p $CACHEDIR
     cd $CACHEDIR
     mkdir -p /tmp/debmower
-    mount -t tmpfs tmpfs /tmp/debmower
-
+    # You can set TMPFS_SIZE=1000m, to set custom tmpfs size 
+    if [ -z "$TMPFS_SIZE" ]; then
+        SIZEOPT="-o size=$TMPFS_SIZE"
+    fi
+    mount -t tmpfs tmpfs /tmp/debmower $SIZEOPT
     echo " * $(date +%H:%M:%S) Performing initial debootstrapping for $RELEASE..."
     CHROOT=tmpfs/chroot
     debootstrap $RELEASE $CHROOT $DEBOOTSTRAP_MIRROR &>> $LOGPATH
@@ -384,6 +391,10 @@ function updatecache {
         &>> $LOGPATH
     fi
     echo "debmower: cleaning up..." &>> $LOGPATH
+    echo "debmower: tmpfs size is $(df -h /tmp/debmower | grep debmower | awk '{print $2}')" \
+         &>> $LOGPATH
+    echo "debmower: tmpfs usage at end was $(df -h /tmp/debmower | grep debmower | awk '{print $4}')" \
+         &>> $LOGPATH
     chroot $CHROOT apt-get clean
     chroot_bind_unmounts
     echo "debmower: ... done" &>> $LOGPATH
