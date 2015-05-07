@@ -174,13 +174,7 @@ function initenv {
     unionfs-fuse -o cow,max_files=32768,use_ino,suid,dev \
                  /dev/shm/debmower=RW:/mnt/debmower/squashfs=RO \
                  $CHROOT
-    if [ "$?" = "0" ]; then
-        echo "debmower: $(date +%H:%M:%S) ... unionfs mounting successful" \
-             >> $LOGPATH
-    else
-        echo "debmower: $(date +%H:%M:%S) ... unionfs mounting failed, aborting..." \
-             >> $LOGPATH
-    fi
+    abort_on_fail
     mkdir -p $CHROOT/dev/pts $CHROOT/proc/pts $IMAGEDIR \
              $IMAGEDIR/$LIVEDIR $IMAGEDIR/syslinux $CHROOT/etc/apt
     mount --bind /dev $CHROOT/dev
@@ -317,10 +311,10 @@ EOF
                 watershed ubiquity-ubuntu-artwork libdevmapper-event1.02.1 \
                 ubiquity-slideshow-ubuntu $LIVECD"
         for package in $REMOVE; do
-            sed -i "/${package}/d" $IMAGEDIR/casper/filesystem.manifest-desktop
+            sed -i "/${package}/d" $IMAGEDIR/$LIVEDIR/filesystem.manifest-desktop
         done
         for package in $REMOVE; do
-            echo $package >> $IMAGEDIR/casper/filesystem.manifest-remove
+            echo $package >> $IMAGEDIR/$LIVEDIR/filesystem.manifest-remove
         done
         MANIFEST_PKG_RM=$(wc -l $IMAGEDIR/$LIVEDIR/filesystem.manifest-remove | \
                           awk '{print $1}')
@@ -342,14 +336,7 @@ function build_cd_image {
     echo "debmower: $(date +%H:%M:%S) Creating squashfs image..." >> $LOGPATH
     mksquashfs $CHROOT $IMAGEDIR/$LIVEDIR/filesystem.squashfs \
                -b $BLOCKSIZE -comp $COMP -noappend -no-progress \
-               &> $LOGPATH.squashfs
-    if [ ! "$?" = "0" ]; then
-        echo "debmower: $(date +%H:%M:%S) ... mksquashfs reports a failure" >> $LOGPATH
-        echo "debmower: $(date +%H:%M:%S) ... please check $LOGPATH.squashfs for details." >> $LOGPATH
-    else
-        echo "debmower: $(date +%H:%M:%S) ... mksquashfs reports that squashfs generation was successful" \
-        >> $LOGPATH
-    fi
+               &> $LOGPATH.squashfs ; abort_on_fail
     echo "debmower: $(date +%H:%M:%S) Creating md5sums..." >> $LOGPATH
     (cd $IMAGEDIR && find . -type f -print0 | xargs -0 md5sum > md5sum.txt)
     echo "debmower: $(date +%H:%M:%S) Creating iso image..." >> $LOGPATH
@@ -360,23 +347,15 @@ function build_cd_image {
                 -c isolinux/boot.cat -no-emul-boot -boot-load-size 4 \
                  -eltorito-boot isolinux/isolinux.bin \
                 -boot-info-table -o $ISOPATH/$ISONAME . \
-                &> $LOGPATH.xorriso
-    if [ ! "$?" = "0" ]; then
-        echo "debmower: $(date +%H:%M:%S) ... xorriso has exited with an error" >> $LOGPATH
-        echo "debmower: $(date +%H:%M:%S) ... check $LOGPATH.xorriso for details" >> $LOGPATH
-        abort_build
+                &> $LOGPATH.xorriso ; abort_on_fail
+    SQUASHFS_SIZE=$(du -sh $IMAGEDIR/$LIVEDIR/filesystem.squashfs \
+                    | awk '{print $1}')
+    if [ -d "$IMAGEDIR/pool" ]; then
+        PKG_POOL_SIZE=$(du -sh $IMAGEDIR/pool | awk '{print $1}')
     else
-        echo "debmower: $(date +%H:%M:%S) ... xorriso reports that iso generation was successfull" \
- i           >> $LOGPATH
-        SQUASHFS_SIZE=$(du -sh $IMAGEDIR/$LIVEDIR/filesystem.squashfs \
-                        | awk '{print $1}')
-        if [ -d "$IMAGEDIR/pool" ]; then
-            PKG_POOL_SIZE=$(du -sh $IMAGEDIR/pool | awk '{print $1}')
-        else
-            PKG_POOL_SIZE="0M"
-        fi
-        ISO_SIZE=$(du -sh $ISOPATH/$ISONAME | awk '{print $1}')
+        PKG_POOL_SIZE="0M"
     fi
+    ISO_SIZE=$(du -sh $ISOPATH/$ISONAME | awk '{print $1}')
 
     echo "debmower: $(date +%H:%M:%S) Cleaning up..." >> $LOGPATH
     umount -l $CHROOT
