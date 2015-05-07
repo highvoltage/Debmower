@@ -110,6 +110,7 @@ if [ "$SYSTEM" = "debian" ]; then
     TEMPLATE="/usr/share/doc/debmower/examples/template/debian"
     DEBOOTSTRAP_MIRROR="http://http.debian.net/debian"
     ISOHYBRID="yes"
+    SOURCESLIST="deb $DEBOOTSTRAP_MIRROR $RELEASE main"
     CACHEIMG=$RELEASE-$ARCH
 fi
 
@@ -135,6 +136,7 @@ if [ "$SYSTEM" = "ubuntu" ]; then
     TEMPLATE="/usr/share/doc/debmower/examples/template/ubuntu"
     DEBOOTSTRAP_MIRROR="http://archive.$SYSTEM.com/$SYSTEM"
     ISOHYBRID="yes"
+    SOURCESLIST="deb $BOOTSTRAP_MIRROR $RELEASE main"
     CACHEIMG=$RELEASE-$ARCH
 fi
 
@@ -189,8 +191,8 @@ function initenv {
     cp /etc/resolv.conf $CHROOT/etc
     echo "debmower: $(date +%H:%M:%S) Setting up APT sources and updating..." \
          >> $LOGPATH
-    sed -e "s/RELEASE/$RELEASE/g" $TEMPLATE/sources.list \
-            > $CHROOT/etc/apt/sources.list
+    echo -e $SOURCESLIST | sed -e "s/RELEASE/$RELEASE/g" \
+         > $CHROOT/etc/apt/sources.list
     LANG=C LANGUAGE=C LC_ALL=C chroot $CHROOT apt-get -q update &>> $LOGPATH.aptlog
     if [ "$?" = "0" ]; then
         echo "debmower: $(date +%H:%M:%S) ... apt-get update completed successfully" \
@@ -277,7 +279,7 @@ function setup_livecd {
         >> $LOGPATH
         echo "                            There is no point in going on." >> $LOGPATH
     fi
-    echo "debmower: $(date +%H:%M:%S) Copying kernels..." >> $LOGPATH
+    echo "debmower: $(date +%H:%M:%S) Configuring live kernels..." >> $LOGPATH
     if [ "$UPDATE_INITRAMFS" = "yes" ]; then
         chroot $CHROOT update-initramfs -u &>> $LOGPATH
     fi
@@ -291,8 +293,11 @@ function setup_livecd {
     echo "debmower: $(date +%H:%M:%S) Copying cdimage boot files and artwork..." \
     >> $LOGPATH
     #cp /usr/lib/syslinux/vesamenu.c32 $IMAGEDIR/syslinux &>> $LOGPATH
-    #cp /usr/lib/syslinux/isolinux.bin $IMAGEDIR/syslinux/syslinux.bin &>> $LOGPATH
-    #cp $TEMPLATE/syslinux/* $IMAGEDIR/syslinux &>> $LOGPATH
+    cp  -r $TEMPLATE/isolinux $IMAGEDIR &>> $LOGPATH
+    cp /usr/lib/ISOLINUX/isolinux.bin /usr/lib/syslinux/modules/bios/ldlinux.c32 \
+       /usr/lib/syslinux/modules/bios/vesamenu.c32 /usr/lib/syslinux/modules/bios/libcom32.c32 \
+       /usr/lib/syslinux/modules/bios/libutil.c32 \
+       $IMAGEDIR/isolinux/ &>> $LOGPATH
     echo "debmower: $(date +%H:%M:%S) Setting dbus machine ID..." >> $LOGPATH
     mkdir -p $CHROOT/var/lib/dbus/
     dbus-uuidgen > $CHROOT/var/lib/dbus/machine-id
@@ -326,6 +331,7 @@ EOF
     fi
 
     # Write unique ID for this disk
+    mkdir -p $IMAGEDIR/.disk
     echo $BUILD_ID > $IMAGEDIR/.disk/casper-uuid-generic
 
     # Write, release-url, if set
@@ -372,13 +378,13 @@ EOF
     if [ "$STORE_DPKGDB" = "yes" ]; then
         mkdir -p /var/cache/debmower/builddata/$BUILD_ID/
         mksquashfs $CHROOT/var/lib/dpkg /var/cache/debmower/builddata/$BUILD_ID/dpkgdb.squashfs \
-                   -noappend &>> $LOG_PATH
+                   -noappend &>> $LOGPATH
     fi
     echo "Top 10 biggest packages:" &>> $LOGPATH
-    chroot $CHROOT "dpkg-query -W --showformat='${Installed-Size}\t${Package}\n' | sort -nr | head -n 10" \
+    chroot $CHROOT dpkg-query -W --showformat='${Installed-Size}\t${Package}\n' | sort -nr | head -n 10 \
            &>> $LOGPATH
-    echo "Debsums report, anything listed here is usually a bad thing:" >> $LOGPATH
-    chroot $CHROOT "debsums | grep -v OK" &>> $LOGPATH
+    echo "debsums report, anything listed here is usually a bad thing:" >> $LOGPATH
+    debsums -c -r $CHROOT | grep -v OK &>> $LOGPATH
 }
 
 function build_cd_image {
