@@ -196,40 +196,17 @@ function initenv {
     echo -e $SOURCESLIST | sed -e "s/RELEASE/$RELEASE/g" \
          > $CHROOT/etc/apt/sources.list
     LANG=C LANGUAGE=C LC_ALL=C chroot $CHROOT apt-get -q update &>> $LOGPATH.aptlog
-    if [ "$?" = "0" ]; then
-        echo "debmower: $(date +%H:%M:%S) ... apt-get update completed successfully" \
-             >> $LOGPATH
-    else
-        echo "debmower: $(date +%H:%M:%S) ... apt-get update failed. there's no point in going on." \
-        >> $LOGPATH
-        abort_build
-    fi
+    abort_on_fail
     if [ "$UPDATE_TEMPLATE" = "yes" ]; then
         echo "debmower: $(date +%H:%M:%S) Updating template at your request..." \
              >> $LOGPATH
         # Doesn't work in trusty due to policykit-1 bug in 0.105-4ubuntu2.14.04.1
         chroot $CHROOT apt-get -q -y dist-upgrade &>> $LOGPATH.aptlog
-        if [ "$?" = "0" ]; then
-            echo "debmower: $(date +%H:%M:%S) template dist-upgrade completed successfully" \
-                 >> $LOGPATH
-        else
-            echo "debmower: $(date +%H:%M:%S) template dist-upgrade failed. there's no point in going on." \
-                 >> $LOGPATH
-            abort_build
-        fi
+        abort_on_fail
     fi
 
 }
 
-function abort_build {
-    echo "debmower: $(date +%H:%M:%S) Aborting..." &>> $LOGPATH
-    umount -f -l /mnt/debmower/squashfs
-    umount -f -l $CHROOT/dev/pts
-    umount -f -l $CHROOT/dev
-    umount -f -l $CHROOT/proc
-    umount -f -l $CHROOT
-    exit 299
-}
 
 function system_install {
     # Ubuntu 14.04 workarounds...
@@ -238,29 +215,12 @@ function system_install {
          &>> $LOGPATH
     chroot $CHROOT ldconfig
     DEBIAN_FRONTEND=$DEBIAN_FRONTEND chroot $CHROOT $INSTALL \
-                    $MAINMETA &>> $LOGPATH.aptlog
-    if [ "$?" = "0" ]; then
-        echo "debmower: $(date +%H:%M:%S) ... APT reports that meta-package installation was successful" \
-        >> $LOGPATH
-    else
-        echo "debmower: $(date +%H:%M:%S) ... APT reports meta-package installation failure." \
-        >> $LOGPATH
-        echo "          There is no point in going on." >> $LOGPATH
-        abort_build
-    fi
+                    $MAINMETA &>> $LOGPATH.aptlog ; abort_on_fail
     echo "debmower: $(date +%H:%M:%S) Installing kernel..." >> $LOGPATH
     DEBIAN_FRONTEND=$DEBIAN_FRONTEND chroot $CHROOT $INSTALL \
-                    $KERNEL &>> $LOGPATH.aptlog
-    if [ "$?" = "0" ]; then
-        echo "debmower: $(date +%H:%M:%S) ... APT reports that kernel installation was successful" \
-        >> $LOGPATH
-    else
-        echo "debmower: ... APT reports kernel installation failure." \
-        >> $LOGPATH
-        echo "          There is no point in going on." >> $LOGPATH
-    fi
-
+                    $KERNEL &>> $LOGPATH.aptlog ; abort_on_fail
 }
+
 
 function setup_livecd {
     # Create a manifest file if we use Ubiquity (or for now, Ubuntu, at least)
@@ -273,14 +233,7 @@ function setup_livecd {
     # Set up Live CD
     echo "debmower: $(date +%H:%M:%S) Installing live packages..." >> $LOGPATH
     chroot $CHROOT $INSTALL $LIVECD &>> $LOGPATH.aptlog
-    if [ "$?" = "0" ]; then
-        echo "debmower: $(date +%H:%M:%S) ... APT reports that live package installation was successful" \
-        >> $LOGPATH
-    else
-        echo "debmower: $(date +%H:%M:%S) ... APT reports live package installation failure." \
-        >> $LOGPATH
-        echo "                            There is no point in going on." >> $LOGPATH
-    fi
+    abort_on_fail
     echo "debmower: $(date +%H:%M:%S) Configuring live kernels..." >> $LOGPATH
     if [ "$UPDATE_INITRAMFS" = "yes" ]; then
         chroot $CHROOT update-initramfs -u &>> $LOGPATH
@@ -294,26 +247,18 @@ function setup_livecd {
     mv $IMAGEDIR/$LIVEDIR/initrd.img.lzma $IMAGEDIR/$LIVEDIR/initrd.lz
     echo "debmower: $(date +%H:%M:%S) Copying cdimage boot files and artwork..." \
     >> $LOGPATH
-    echo "debmower: $(date +%H:%M:%S) Configuring isolinux structure..." >> $LOGPATH 
     cp  -r $TEMPLATE/* $IMAGEDIR &>> $LOGPATH
-    if [ "$GENISOLINUX_STRUCTURE" = "yes" ]; then 
+    if [ "$GENISOLINUX_STRUCTURE" = "yes" ]; then
+        echo "debmower: $(date +%H:%M:%S) Configuring isolinux structure..." >> $LOGPATH
         cp /usr/lib/ISOLINUX/isolinux.bin /usr/lib/syslinux/modules/bios/ldlinux.c32 \
            /usr/lib/syslinux/modules/bios/vesamenu.c32 /usr/lib/syslinux/modules/bios/libcom32.c32 \
            /usr/lib/syslinux/modules/bios/libutil.c32 \
-           $IMAGEDIR/isolinux/ &>> $LOGPATH
+           $IMAGEDIR/isolinux/ &>> $LOGPATH ; abort_on_fail
     fi
 
     echo "debmower: $(date +%H:%M:%S) Setting dbus machine ID..." >> $LOGPATH
     mkdir -p $CHROOT/var/lib/dbus/
-    dbus-uuidgen > $CHROOT/var/lib/dbus/machine-id
-    if [ "$?" = "0" ]; then
-        echo "debmower: $(date +%H:%M:%S) ... success" \
-             >> $LOGPATH
-    else
-        echo "debmower: $(date +%H:%M:%S) ... failed, please ensure that dbus is installed" \  
-             >> $LOGPATH
-        abort_build
-    fi
+    dbus-uuidgen > $CHROOT/var/lib/dbus/machine-id ; abort_on_fail
     if [ -f "$TEMPLATE/README.diskdefines" ]; then
         cp $TEMPLATE/README.diskdefines $IMAGEDIR/
     else
@@ -392,6 +337,7 @@ EOF
     debsums -c -r $CHROOT | grep -v OK &>> $LOGPATH
 }
 
+
 function build_cd_image {
     echo "debmower: $(date +%H:%M:%S) Creating squashfs image..." >> $LOGPATH
     mksquashfs $CHROOT $IMAGEDIR/$LIVEDIR/filesystem.squashfs \
@@ -442,6 +388,7 @@ function build_cd_image {
     fi
 }
 
+
 function updatecache {
     mkdir -p $CACHEDIR
     cd $CACHEDIR
@@ -478,6 +425,7 @@ function updatecache {
     echo "debmower: ... done" &>> $LOGPATH
 }
 
+
 function generate_reports {
     echo "debmower: REPORT: Main meta used is $MAINMETA and live is $LIVECD" >> $LOGPATH
     echo "debmower: REPORT: This $IMAGETYPE uses $COMP for squashfs compression" >> $LOGPATH
@@ -492,6 +440,32 @@ function generate_reports {
     echo "debmower: REPORT: ISO size is $ISO_SIZE" >> $LOGPATH
     echo "debmower: $(date +%H:%M:%S) All done." >> $LOGPATH
 }
+
+
+function abort_build {
+    echo "debmower: $(date +%H:%M:%S) Aborting..." &>> $LOGPATH
+    umount -f -l /mnt/debmower/squashfs
+    umount -f -l $CHROOT/dev/pts
+    umount -f -l $CHROOT/dev
+    umount -f -l $CHROOT/proc
+    umount -f -l $CHROOT
+    exit 299
+}
+
+
+function abort_on_fail {
+    if [ "$?" = "0" ]; then
+        echo "debmower: $(date +%H:%M:%S) ... completed successfully" \
+        >> $LOGPATH
+    else
+        echo "debmower: ... step has failed," \
+        >> $LOGPATH
+        echo "          There is no point in going on." >> $LOGPATH
+        # exit with generic error
+        exit 1
+    fi
+}
+
 
 if [ "$2" = "updatecache" ]; then
     updatecache
