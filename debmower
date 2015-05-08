@@ -45,8 +45,8 @@ if [ "$CONFIG" != "" ]; then
         . $CONFIG
     else
         echo "Specified configuration file not found, aborting..."
-    exit
-     fi
+        exit
+    fi
 else
     echo "No configuration specified, continuing with defaults..."
 fi
@@ -152,12 +152,12 @@ function setup_livecd {
            $IMAGEDIR/isolinux/ &>> $LOGPATH ; abort_on_fail
         #TODO: This will be somewhat more configurable in the future:
         # Set up live entries:
-        echo -e "label live\n menu label Live System\n kernel /$LIVEDIR/vmlinuz.efi\n append initrd=/$LIVEDIR/initrd.lz boot=$LIVEDIR config quiet console-setup/layoutcode=us console-setup/layout=USA" > $IMAGEDIR/isolinux/live.cfg
+        echo -e "label live\n menu label $NAME Live System\n kernel /$LIVEDIR/vmlinuz.efi\n append initrd=/$LIVEDIR/initrd.lz boot=$LIVEDIR config quiet console-setup/layoutcode=us console-setup/layout=USA" > $IMAGEDIR/isolinux/live.cfg
         echo -e "label memtest\n menu label Memory Test\n kernel $LIVEDIR/memtest" >> $IMAGEDIR/isolinux/live.cfg
         echo -e "label nextboot\n menu label Boot From Hard Disk\n localboot -1" >> $IMAGEDIR/isolinux/live.cfg
         echo -e "ui vesamenu\ninclude menu.cfg\ndefault /isolinux/vesamenu.c32\nprompt 0\ntimeout 00" \
                 > $IMAGEDIR/isolinux/isolinux.cfg
-        echo -e "menu hshift 13\nmenu width 49\nmenu title Boot Menu\ninclude stdmenu.cfg\ninclude live.cfg\nconfig prompt.cfg" > $IMAGEDIR/isolinux/menu.cfg
+        echo -e "menu hshift 13\nmenu width 49\nmenu title $NAME Boot Menu\ninclude stdmenu.cfg\ninclude live.cfg\nconfig prompt.cfg" > $IMAGEDIR/isolinux/menu.cfg
         echo -e "prompt 1\ndisplay f1.txt\ntimeout 0\ninclude menu.cfg\ninclude exithelp.cfg\n\nf1 f1.txt\nf2 f2.txt" \
              > $IMAGEDIR/isolinux/prompt.cfg
         echo -e "menu background /isolinux/splash.png\nmenu color title * #FFFFFFFF *\nmenu color border * #00000000 #00000000 none\nmenu color sel * #ffffffff #76a1d0ff *\nmenu color hotsel 1;7;37;40 #ffffffff #76a1d0ff *\nmenu color tabmsg       * #ffffffff #00000000 *\nmenu color help 37;40 #ffdddd00 #00000000 none\nmenu vshift 12\nmenu rows 10\nmenu helpmsgrow 15\nmenu cmdlinerow 16\nmenu timeoutrow 16\nmenu tabmsgrow 18\nmenu tabmsg Press ENTER to boot or TAB to edit a menu entry" > $IMAGEDIR/isolinux/stdmenu.cfg
