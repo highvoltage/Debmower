@@ -308,6 +308,23 @@ function updatecache {
 }
 
 
+function create_cd_pool {
+    if [ ! -z $POOL_PKGS ]; then
+        chroot $CHROOT apt-get clean
+        chroot $CHROOT apt-get -d install $POOL_PGKS
+        abort_on_fail
+        mkdir -p /var/cache/debmower/pool_pkg
+        cp -r $CHROOT/var/cache/apt/archives/*deb /var/cache/debmower/pool_pkg
+        if [ ! -z $POOL_PKGS_DIR ]; then
+            cp -r $POOL_PKGS_DIR/*deb /var/cache/debmower/pool_pkg
+            abort_on_fail
+        fi
+        abort_on_fail
+        #TODO: Add repropro parts here
+    fi
+}
+
+
 function generate_reports {
     echo "debmower: REPORT: Main meta used is $MAINMETA and live is $LIVECD" >> $LOGPATH
     echo "debmower: REPORT: This $IMAGETYPE uses $COMP for squashfs compression" >> $LOGPATH
