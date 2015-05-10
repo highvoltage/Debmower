@@ -56,7 +56,7 @@ function initenv {
     echo "Debmower version $DEBMOWER, building $NAME, from $SYSTEM $RELEASE $ARCH packages" \
          > $LOGPATH
     echo "debmower: this build ID is $BUILD_ID" >> $LOGPATH
-    echo "" > $LOGPATH.aptlog
+    echo "" > $LOGPATH.extended
     echo "debmower: $(date +%H:%M:%S) Preparing directories..." >> $LOGPATH
     rm -rf $IMAGEDIR $CHROOT
     echo "debmower: $(date +%H:%M:%S) (enabling a ramdisk build)" >> $LOGPATH
@@ -84,13 +84,13 @@ function initenv {
          >> $LOGPATH
     echo -e $SOURCESLIST | sed -e "s/RELEASE/$RELEASE/g" \
          > $CHROOT/etc/apt/sources.list
-    LANG=C LANGUAGE=C LC_ALL=C chroot $CHROOT apt-get -q update &>> $LOGPATH.aptlog
+    LANG=C LANGUAGE=C LC_ALL=C chroot $CHROOT apt-get -q update &>> $LOGPATH.extended
     abort_on_fail
     if [ "$UPDATE_TEMPLATE" = "yes" ]; then
         echo "debmower: $(date +%H:%M:%S) Updating template at your request..." \
              >> $LOGPATH
         # Doesn't work in trusty due to policykit-1 bug in 0.105-4ubuntu2.14.04.1
-        chroot $CHROOT apt-get -q -y dist-upgrade &>> $LOGPATH.aptlog
+        chroot $CHROOT apt-get -q -y dist-upgrade &>> $LOGPATH.extended
         abort_on_fail
     fi
 }
@@ -104,11 +104,17 @@ function system_install {
     dbus-uuidgen > $CHROOT/var/lib/dbus/machine-id ; abort_on_fail
     echo "debmower: $(date +%H:%M:%S) Installing main meta-package..." \
          &>> $LOGPATH
+    # FIXME: Need fo find the best solution for dbus losing state
+    #rm -f $CHROOT/var/run/dbus/system_bus_socket
+    if [ -f $CHROOT/var/run/dbus/system_bus_socket ]; then
+        chroot $CHROOT /etc/init.d/dbus stop
+        chroot $CHROOT /etc/init.d/dbus start
+    fi
     DEBIAN_FRONTEND=$DEBIAN_FRONTEND chroot $CHROOT $INSTALL \
-                    $MAINMETA &>> $LOGPATH.aptlog ; abort_on_fail
+                    $MAINMETA &>> $LOGPATH.extended ; abort_on_fail
     echo "debmower: $(date +%H:%M:%S) Installing kernel..." >> $LOGPATH
     DEBIAN_FRONTEND=$DEBIAN_FRONTEND chroot $CHROOT $INSTALL \
-                    $KERNEL &>> $LOGPATH.aptlog ; abort_on_fail
+                    $KERNEL &>> $LOGPATH.extended ; abort_on_fail
     TMPFS_AVAILABLE=$(df -h /mnt/debmower/tmp | grep debmower | awk '{print $2}')
          &>> $LOGPATH
     TMPFS_USED=$(df -h /mnt/debmower/tmp | grep debmower | awk '{print $4}')
@@ -125,7 +131,7 @@ function setup_livecd {
     fi
     # Set up Live CD
     echo "debmower: $(date +%H:%M:%S) Installing live packages..." >> $LOGPATH
-    chroot $CHROOT $INSTALL $LIVECD &>> $LOGPATH.aptlog
+    chroot $CHROOT $INSTALL $LIVECD &>> $LOGPATH.extended
     abort_on_fail
     echo "debmower: $(date +%H:%M:%S) Setting up live kernels..." >> $LOGPATH
     if [ "$UPDATE_INITRAMFS" = "yes" ]; then
@@ -195,7 +201,7 @@ function setup_livecd {
     chroot_bind_unmounts
     echo "localhost" > $CHROOT/etc/hostname
     if [ "$AUTOREMOVE" = "yes" ]; then
-        chroot $CHROOT apt-get -qq -y autoremove &>> $LOGPATH.aptlog
+        chroot $CHROOT apt-get -qq -y autoremove &>> $LOGPATH.extended
     fi
     # Create a manifest file if we use Ubiquity (or for now, Ubuntu, at least)
     if [ "$SYSTEM" = "ubuntu" ]; then
@@ -292,7 +298,7 @@ function updatecache {
     chroot $CHROOT apt-get clean
     chroot_bind_unmounts &>> /dev/null
     # generate squashfs for future ramdisk use
-    echo " * $(date +%H:%M:%S) Creating $CACHEIMG squashfs..."
+    echo " * $(date +%H:%M:%S) Creating $CACHEIMG squashfs cache file..." >> $LOGPATH
     mksquashfs $CHROOT $CACHEDIR/$CACHEIMG.squashfs -noappend -no-progress &> LOGPATH.extended ; abort_on_fail
     umount -f -l /mnt/debmower/tmp &> /dev/null
     umount -f -l /mnt/debmower &> /dev/null
