@@ -221,8 +221,8 @@ function setup_livecd {
     fi
     if [ "$STORE_DPKGDB" = "yes" ]; then
         mkdir -p /var/cache/debmower/builddata/$BUILD_ID/
-        mksquashfs $CHROOT/var/lib/dpkg /var/cache/debmower/builddata/$BUILD_ID/dpkgdb.squashfs \
-                   -noappend &>> $LOGPATH
+        mksquashfs $CHROOT/var/lib/dpkg /var/cache/debmower/builddata/$BUILD_ID/dpkgdb.extended \
+                   -noappend &>> $LOGPATH.extended
     fi
     echo "Top 10 biggest packages:" &>> $LOGPATH
     chroot $CHROOT dpkg-query -W --showformat='${Installed-Size}\t${Package}\n' | sort -nr | head -n 10 \
@@ -261,8 +261,7 @@ function build_cd_image {
     echo "debmower: $(date +%H:%M:%S) Cleaning up..." >> $LOGPATH
     umount -l $CHROOT
     umount -l /mnt/debmower/squashfs
-    umount -l -f /mnt/debmower/tmp
-    umount /mnt/debmower/tmp
+    umount -l -f /mnt/debmower/tmp > /dev/null
     rmdir /mnt/debmower/tmp
     rm -rf /mnt/debmower
     if [ ! "$KEEP_IMAGEDIR" = "yes" ]; then
@@ -282,7 +281,7 @@ function updatecache {
     mount -t tmpfs tmpfs /mnt/debmower/tmp #$SIZEOPT
     echo " * $(date +%H:%M:%S) Performing initial debootstrapping for $RELEASE..." >> $LOGPATH
     CHROOT=/mnt/debmower/chroot
-    debootstrap $RELEASE $CHROOT $DEBOOTSTRAP_MIRROR &>> $LOGPATH ; abort_on_fail
+    debootstrap $RELEASE $CHROOT $DEBOOTSTRAP_MIRROR &>> $LOGPATH.extended ; abort_on_fail
     chroot_bind_mounts
     if [ ! -z "$CACHEPACKAGES" ]; then
         echo " * $(date +%H:%M:%S) Installing requested cache packages..." \
@@ -308,19 +307,32 @@ function updatecache {
 }
 
 
-function create_cd_pool {
-    if [ ! -z $POOL_PKGS ]; then
+function create_pkg_pool {
+    if [ ! -z "$POOL_PKGS" ]; then
+        echo " * $(date +%H:%M:%S) debmower: Setting up package pool..." > $LOGPATH
         chroot $CHROOT apt-get clean
-        chroot $CHROOT apt-get -d install $POOL_PGKS
+        echo " * $(date +%H:%M:%S)  Downloading $POOL_PKGS" > $LOGPATH
+        export POOL_PKGS
+        # this is needed if we change network since template build
+        cp /etc/resolv.conf $CHROOT/etc/
+        chroot $CHROOT apt-get -y -d install $POOL_PKGS >> $LOGPATH.extended
         abort_on_fail
         mkdir -p /var/cache/debmower/pool_pkg
         cp -r $CHROOT/var/cache/apt/archives/*deb /var/cache/debmower/pool_pkg
         if [ ! -z $POOL_PKGS_DIR ]; then
+            echo " * $(date +%H:%M:%S) debmower: Copying additional pool packages..."
             cp -r $POOL_PKGS_DIR/*deb /var/cache/debmower/pool_pkg
             abort_on_fail
         fi
+        mkdir -p /var/cache/debmower/pool_pkg/archives/conf
+        # FIXME: Architectures hardcoded:
+        echo -e "Codename: $RELEASE\nComponents:main\nArchitectures: i386 amd64" \
+                > /var/cache/debmower/pool_pkg/archives/conf/distributions
+        reprepro -b /var/cache/debmower/pool_pkg/archives/ includedeb $RELEASE /var/cache/debmower/pool_pkg/*deb >> $LOGPATH.extended
         abort_on_fail
-        #TODO: Add repropro parts here
+        cp -R /var/cache/debmower/pool_pkg/archives/{pool,dists} $IMAGEDIR
+        chroot $CHROOT apt-get clean
+        rm -rf /var/cache/debmower/pool_pkg
     fi
 }
 
@@ -350,7 +362,8 @@ function abort_build {
     umount -f -l /mnt/debmower/squashfs
     chroot_bind_unmounts
     umount -f -l $CHROOT
-    umount -f -l /mnt/debmower
+    umount -f -l /mnt/debmower/tmp > /dev/null
+    umount -f -l /mnt/debmower > /dev/null
     rmdir /mnt/debmower/
     exit 299
 }
@@ -400,5 +413,6 @@ trap abort_build 2
 initenv
 system_install
 setup_livecd
+create_pkg_pool
 build_cd_image
 generate_reports
