@@ -55,6 +55,9 @@ function initenv {
     # Initialise environment
     echo "Debmower version $DEBMOWER, building $NAME, from $SYSTEM $RELEASE $ARCH packages" \
          > $LOGPATH
+    if [ ! -f $CACHEDIR/$CACHEIMG.squashfs ]; then
+        updatecache
+    fi
     echo "debmower: this build ID is $BUILD_ID" >> $LOGPATH
     echo "" > $LOGPATH.extended
     echo "debmower: $(date +%H:%M:%S) Preparing directories..." >> $LOGPATH
@@ -76,10 +79,13 @@ function initenv {
     abort_on_fail
     chroot_bind_mounts
     echo "none none none none 0 0" > $CHROOT/etc/mtab
-    if [ ! -f $CACHEDIR/$CACHEIMG.squashfs ]; then
-        updatecache
-    fi
     cp /etc/resolv.conf $CHROOT/etc
+    if [ "$SYSTEM" = "ubuntu" ]; then
+        echo "debmower: $(date +%H:%M:%S) Diverting initctl..." \
+             >> $LOGPATH
+        chroot $CHROOT dpkg-divert --local --rename --add /sbin/initctl &>> $LOGPATH
+        chroot $CHROOT ln -s /bin/true /sbin/initctl
+    fi
     echo "debmower: $(date +%H:%M:%S) Setting up APT sources and updating..." \
          >> $LOGPATH
     echo -e $SOURCESLIST | sed -e "s/RELEASE/$RELEASE/g" \
@@ -104,8 +110,6 @@ function system_install {
     dbus-uuidgen > $CHROOT/var/lib/dbus/machine-id ; abort_on_fail
     echo "debmower: $(date +%H:%M:%S) Installing main meta-package..." \
          &>> $LOGPATH
-    # FIXME: Need fo find the best solution for dbus losing state
-    #rm -f $CHROOT/var/run/dbus/system_bus_socket
     if [ -f $CHROOT/var/run/dbus/system_bus_socket ]; then
         chroot $CHROOT /etc/init.d/dbus stop
         chroot $CHROOT /etc/init.d/dbus start
@@ -138,9 +142,9 @@ function setup_livecd {
     echo "debmower: $(date +%H:%M:%S) Installing live packages..." >> $LOGPATH
     chroot $CHROOT $INSTALL $LIVECD &>> $LOGPATH.extended
     abort_on_fail
-    echo "Here's your shellout..."
-    cp -R /home/jonathan/archives.cp /var/cache/debmower/chroot
-    chroot /var/cache/debmower/chroot
+    #echo "Here's your shellout..."
+    #cp -R /home/jonathan/archives.cp /var/cache/debmower/chroot
+    #chroot /var/cache/debmower/chroot
     UPDATE_INITRAMFS="yes"
     echo "debmower: $(date +%H:%M:%S) Setting up live kernels..." >> $LOGPATH
     if [ "$UPDATE_INITRAMFS" = "yes" ]; then
@@ -159,6 +163,7 @@ function setup_livecd {
           >> $LOGPATH
     cp  -r $TEMPLATE/* $IMAGEDIR &>> $LOGPATH
     if [ "$GENISOLINUX_STRUCTURE" = "yes" ]; then
+        mkdir -p $IMAGEDIR/isolinux
         echo "debmower: $(date +%H:%M:%S) Configuring isolinux structure..." >> $LOGPATH
         cp /usr/lib/ISOLINUX/isolinux.bin /usr/lib/syslinux/modules/bios/ldlinux.c32 \
            /usr/lib/syslinux/modules/bios/vesamenu.c32 /usr/lib/syslinux/modules/bios/libcom32.c32 \
@@ -182,6 +187,7 @@ function setup_livecd {
         cp $TEMPLATE/README.diskdefines $IMAGEDIR/
     else
         #TODO: new variable $CODENAME
+        mkdir -p $TEMPLATE/.disk
         echo -e "#define DISKNAME  $NAME \"CODENAME\" - Release $ARCH\n#define TYPE binary\n#define TYPEbinary 1\n#define ARCH $ARCH\n#define ARCH$ARCH 1\n#define DISKNUM 1\n#define DISKNUM1 1\n#define TOTALNUM 0\n#define TOTALNUM0 1\n" > $IMAGEDIR/README.diskdefines
     touch $TEMPLATE/.disk/base_installable
     echo "dvd/single" > $TEMPLATE/.disk/cd_type
@@ -209,7 +215,11 @@ function setup_livecd {
 
     echo "debmower: $(date +%H:%M:%S) Cleaning up chroot data..." >> $LOGPATH
     chroot $CHROOT /etc/init.d/dbus stop
-    rm $CHROOT/var/run/dbus/system_bus_socket
+    rm -f $CHROOT/var/run/dbus/system_bus_socket
+    if [ "$SYSTEM" = "ubuntu" ]; then
+        rm $CHROOT/sbin/initctl
+        chroot $CHROOT dpkg-divert --rename --remove /sbin/initctl
+    fi
     chroot $CHROOT apt-get clean
     rm -rf $CHROOT/tmp/*
     echo "nameserver 127.0.1.1" > $CHROOT/etc/resolv.conf
@@ -307,8 +317,8 @@ function updatecache {
     LANG=C LANGUAGE=C LC_ALL=C chroot $CHROOT apt-get -q update &>> $LOGPATH.extended
         echo " * $(date +%H:%M:%S) Installing requested cache packages..." \
              &>> $LOGPATH
-        chroot $CHROOT $INSTALL $CACHEPACKAGES \
-               &>> $LOGPATH
+        DEBIAN_FRONTEND=$DEBIAN_FRONTEND chroot $CHROOT $INSTALL $CACHEPACKAGES \
+               &>> $LOGPATH.extended
     fi
     echo "debmower: cleaning up..." &>> $LOGPATH
     echo "debmower: tmpfs size is $(df -h /mnt/debmower/tmp | grep debmower | awk '{print $2}')" \
@@ -325,6 +335,7 @@ function updatecache {
     rm -rf /mnt/debmower
     cd ..
     echo "debmower: ... done" &>> $LOGPATH
+    chroot_bind_unmounts &>> /dev/null
 }
 
 
