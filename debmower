@@ -129,10 +129,19 @@ function setup_livecd {
                        | tee $IMAGEDIR/$LIVEDIR/filesystem.manifest \
                          &>> $LOGPATH.manifest
     fi
+    if [ "$SYSTEM" = "debian" ]; then
+        chroot $CHROOT dpkg-query -W --showformat='${Package} ${Version}\n' \
+                       | tee $IMAGEDIR/$LIVEDIR/filesystem.manifest \
+                         &>> $LOGPATH.manifest
+    fi
     # Set up Live CD
     echo "debmower: $(date +%H:%M:%S) Installing live packages..." >> $LOGPATH
     chroot $CHROOT $INSTALL $LIVECD &>> $LOGPATH.extended
     abort_on_fail
+    echo "Here's your shellout..."
+    cp -R /home/jonathan/archives.cp /var/cache/debmower/chroot
+    chroot /var/cache/debmower/chroot
+    UPDATE_INITRAMFS="yes"
     echo "debmower: $(date +%H:%M:%S) Setting up live kernels..." >> $LOGPATH
     if [ "$UPDATE_INITRAMFS" = "yes" ]; then
         echo "debmower: $(date +%H:%M:%S) Generating new initramfs..." >> $LOGPATH
@@ -172,7 +181,10 @@ function setup_livecd {
     if [ -f "$TEMPLATE/README.diskdefines" ]; then
         cp $TEMPLATE/README.diskdefines $IMAGEDIR/
     else
-        echo -e "#define DISKNAME  $NAME - $ARCH\n#define TYPE binary\n#define TYPEbinary 1\n#define ARCH $ARCH\n#define ARCH$ARCH 1\n#define DISKNUM 1\n#define DISKNUM1 1\n#define TOTALNUM 0\n#define TOTALNUM0 1\n" > $IMAGEDIR/README.diskdefines
+        #TODO: new variable $CODENAME
+        echo -e "#define DISKNAME  $NAME \"CODENAME\" - Release $ARCH\n#define TYPE binary\n#define TYPEbinary 1\n#define ARCH $ARCH\n#define ARCH$ARCH 1\n#define DISKNUM 1\n#define DISKNUM1 1\n#define TOTALNUM 0\n#define TOTALNUM0 1\n" > $IMAGEDIR/README.diskdefines
+    touch $TEMPLATE/.disk/base_installable
+    echo "dvd/single" > $TEMPLATE/.disk/cd_type
     fi
     # Copy CD root data
     if [ -d $TEMPLATE/cdroot ]; then
@@ -182,6 +194,8 @@ function setup_livecd {
     # Write unique ID for this disk
     mkdir -p $IMAGEDIR/.disk
     echo $BUILD_ID > $IMAGEDIR/.disk/casper-uuid-generic
+    echo "$NAME $VERSION \"$DESC\" - Release $ARCH (19700101)" \
+         > $IMAGEDIR/.disk/info
 
     # Write, release-url, if set
     if [ ! -z $RELEASE_NOTES_URL ]; then
@@ -194,6 +208,8 @@ function setup_livecd {
     fi
 
     echo "debmower: $(date +%H:%M:%S) Cleaning up chroot data..." >> $LOGPATH
+    chroot $CHROOT /etc/init.d/dbus stop
+    rm $CHROOT/var/run/dbus/system_bus_socket
     chroot $CHROOT apt-get clean
     rm -rf $CHROOT/tmp/*
     echo "nameserver 127.0.1.1" > $CHROOT/etc/resolv.conf
@@ -284,6 +300,11 @@ function updatecache {
     debootstrap $RELEASE $CHROOT $DEBOOTSTRAP_MIRROR &>> $LOGPATH.extended ; abort_on_fail
     chroot_bind_mounts
     if [ ! -z "$CACHEPACKAGES" ]; then
+    echo "debmower: $(date +%H:%M:%S) Setting up APT sources and updating..." \
+         >> $LOGPATH
+    echo -e $SOURCESLIST | sed -e "s/RELEASE/$RELEASE/g" \
+         > $CHROOT/etc/apt/sources.list
+    LANG=C LANGUAGE=C LC_ALL=C chroot $CHROOT apt-get -q update &>> $LOGPATH.extended
         echo " * $(date +%H:%M:%S) Installing requested cache packages..." \
              &>> $LOGPATH
         chroot $CHROOT $INSTALL $CACHEPACKAGES \
@@ -320,7 +341,7 @@ function create_pkg_pool {
         mkdir -p /var/cache/debmower/pool_pkg
         cp -r $CHROOT/var/cache/apt/archives/*deb /var/cache/debmower/pool_pkg
         if [ ! -z $POOL_PKGS_DIR ]; then
-            echo " * $(date +%H:%M:%S) debmower: Copying additional pool packages..."
+            echo " * $(date +%H:%M:%S) debmower: Copying additional pool packages..." >> $LOGPATH
             cp -r $POOL_PKGS_DIR/*deb /var/cache/debmower/pool_pkg
             abort_on_fail
         fi
@@ -328,6 +349,7 @@ function create_pkg_pool {
         # FIXME: Architectures hardcoded:
         echo -e "Codename: $RELEASE\nComponents:main\nArchitectures: i386 amd64" \
                 > /var/cache/debmower/pool_pkg/archives/conf/distributions
+        echo " * $(date +%H:%M:%S) debmower: Generating pool indices..." >> $LOGPATH
         reprepro -b /var/cache/debmower/pool_pkg/archives/ includedeb $RELEASE /var/cache/debmower/pool_pkg/*deb >> $LOGPATH.extended
         abort_on_fail
         cp -R /var/cache/debmower/pool_pkg/archives/{pool,dists} $IMAGEDIR
@@ -340,6 +362,7 @@ function create_pkg_pool {
 function generate_reports {
     echo "debmower: REPORT: Main meta used is $MAINMETA and live is $LIVECD" >> $LOGPATH
     echo "debmower: REPORT: This $IMAGETYPE uses $COMP for squashfs compression" >> $LOGPATH
+    #TODO: Check whether manifests exist before reporting on it
     echo "debmower: REPORT: Total packages in manifest: $MANIFEST_PKG packages" \
           >> $LOGPATH
     echo "debmower: REPORT: Live package manifest: $MANIFEST_PKG_RM packages" \
@@ -374,7 +397,7 @@ function abort_on_fail {
         echo "debmower: $(date +%H:%M:%S) ... completed successfully" \
         >> $LOGPATH
     else
-        echo "debmower: ... step has failed," \
+        echo "debmower: $(date +%H:%M:%S) ... step has failed," \
         >> $LOGPATH
         echo "          There is no point in going on." >> $LOGPATH
         abort_build
