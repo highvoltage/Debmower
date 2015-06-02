@@ -319,6 +319,7 @@ function updatecache {
              &>> $LOGPATH
         DEBIAN_FRONTEND=$DEBIAN_FRONTEND chroot $CHROOT $INSTALL $CACHEPACKAGES \
                &>> $LOGPATH.extended
+        abort_on_fail
     fi
     echo "debmower: cleaning up..." &>> $LOGPATH
     echo "debmower: tmpfs size is $(df -h /mnt/debmower/tmp | grep debmower | awk '{print $2}')" \
