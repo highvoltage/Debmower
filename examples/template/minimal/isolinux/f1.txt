@@ -1,10 +1,0 @@
-                  0fWelcome to GNU/Linux!07                                09F107
-
-This is a custom build, built from an unmodified debmower template. 
-
-
-For F1-F9 type control and F then the digit 1-9
-For F10 type control and F then the digit 0
-
-
-Press F2 through F10 for details (if available), or ENTER to boot. 

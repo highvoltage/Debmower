@@ -36,120 +36,17 @@ if [ ! "$UID" = "0" ]; then
     exit 403
 fi
 
-# Defaults
-# This is the Debmower Version used in logs
-DEBMOWER="0.3.1"
-# debian, ubuntu
-SYSTEM="ubuntu"
-# eg, 16384, 32768
-BLOCKSIZE="65536"
-# eg, ubuntu-trusty, custom-disk
-NAME="$SYSTEM-custom-spin"
-# Version of /your/ disc/release
-VERSION="0.01"
-# iso filename
-ISONAME="$NAME-$VERSION.iso"
-ISOPATH="../"
-# Where base images are stored
-CACHEDIR="/var/cache/debmower/dists"
-# Where the squashfs contents are put together
-CHROOT="/var/cache/debmower/chroot"
-# Directory where work happens
-IMAGEDIR="/var/cache/debmower/image"
-RAMDISK="no"
-# Where to log stuff
-LOGPATH=/var/log/debmower/build.$$
-# Architecture (i386, amd64, ppc, armhf)
-ARCH="amd64"
-# What kind of image are we building? iso, usb
-IMAGETYPE="iso"
-# Compression used for squashfs
-COMP="gzip" #gzip lzo xz
-# If update_initramfs is required for kernels
-UPDATE_INITRAMFS="no"
-# Auto remove packages that are marked as no longer needed
-AUTOREMOVE="yes"
-# Generate an ID for this build
-BUILD_ID=$(uuidgen -t)
-# Populate /isolinux
-GENISOLINUX_STRUCTURE="yes"
+# Read debmower defaults
+. /etc/debmower/debmower.conf
 
-# Source configuration, if specified
+# Read user configuration, if specified
 if [ "$CONFIG" != "" ]; then
     if [ -f $CONFIG ]; then
         . $CONFIG
     else
         echo "Specified configuration file not found, aborting..."
-    exit
+        exit
     fi
-else
-    echo "No configuration specified, continuing with defaults..."
-fi
-
-# We make some assumptions on what the user will want based on the
-# type of system they are building. The user can specify alternatives
-# in their configuration file.
-if [ "$SYSTEM" = "debian" ]; then
-    LIVESYSTEM="live=LIVE"
-    LIVEDIR="live"
-    # eg, wheezy, jessie
-    RELEASE="wheezy"
-    # eg, linux-image-686
-    KERNEL="linux-image-686"
-    # LIVECD should ideally specify one meta-package:
-    LIVECD="live-boot live-boot-initramfs-tools live-config \
-            live-config-sysvinit debian-installer-launcher \
-            debian-installer libdebian-installer-extra4 \
-            libdebian-installer4"
-    # MAINMETA should ideally specify one meta-package:
-    MAINMETA="gnome-session-fallback gnome-terminal strace locales \
-              less"
-    # how this system installs packages
-    INSTALL="apt-get -qq -y install --force-yes "
-    # eg, noninteractive, text
-    DEBIAN_FRONTEND="noninteractive"
-    # Disk Image template
-    TEMPLATE="/usr/share/doc/debmower/examples/template/debian"
-    DEBOOTSTRAP_MIRROR="http://http.debian.net/debian"
-    ISOHYBRID="yes"
-    SOURCESLIST="deb $DEBOOTSTRAP_MIRROR $RELEASE main"
-    CACHEIMG=$RELEASE-$ARCH
-fi
-
-if [ "$SYSTEM" = "ubuntu" ]; then
-    LIVESYSTEM="live=casper"
-    LIVEDIR="casper"
-    # eg, precise, trusty
-    RELEASE="trusty"
-    # eg, linux-image-generic
-    KERNEL="linux-image-generic"
-    # LIVECD should ideally specify one meta-package:
-    LIVECD="ubiquity casper user-setup xresprobe libdebian-installer4 \
-            os-prober ubiquity-frontend-gtk ubiquity-slideshow-ubuntu \
-            libdevmapper-event1.02.1 ubiquity-slideshow-ubuntu"
-    # MAINMETA should ideally specify one meta-package:
-    MAINMETA="ubuntu-desktop"
-    # how this system installs packages, the space at the end is important
-    INSTALL="apt-get -qq -y install --force-yes "
-    # Which releases to cache
-    CACHEDISTS="trusty"
-    # eg, noninteractive, text
-    DEBIAN_FRONTEND="noninteractive"
-    TEMPLATE="/usr/share/doc/debmower/examples/template/ubuntu"
-    DEBOOTSTRAP_MIRROR="http://archive.$SYSTEM.com/$SYSTEM"
-    ISOHYBRID="yes"
-    SOURCESLIST="deb $BOOTSTRAP_MIRROR $RELEASE main"
-    CACHEIMG=$RELEASE-$ARCH
-fi
-
-# Source configuration, if specified
-if [ "$CONFIG" != "" ]; then
-    if [ -f $CONFIG ]; then
-        . $CONFIG
-    else
-        echo "Specified configuration file not found, aborting..."
-    exit
-     fi
 else
     echo "No configuration specified, continuing with defaults..."
 fi
@@ -158,14 +55,17 @@ function initenv {
     # Initialise environment
     echo "Debmower version $DEBMOWER, building $NAME, from $SYSTEM $RELEASE $ARCH packages" \
          > $LOGPATH
+    if [ ! -f $CACHEDIR/$CACHEIMG.squashfs ]; then
+        updatecache
+    fi
     echo "debmower: this build ID is $BUILD_ID" >> $LOGPATH
-    echo "" > $LOGPATH.aptlog
+    echo "" > $LOGPATH.extended
     echo "debmower: $(date +%H:%M:%S) Preparing directories..." >> $LOGPATH
     rm -rf $IMAGEDIR $CHROOT
     echo "debmower: $(date +%H:%M:%S) (enabling a ramdisk build)" >> $LOGPATH
 
-    mkdir -p /tmp/debmower
-    mount -t tmpfs tmpfs /tmp/debmower
+    mkdir -p /mnt/debmower/tmp
+    mount -t tmpfs tmpfs /mnt/debmower/tmp
 
     mkdir -p $CHROOT
     mkdir -p /mnt/debmower/squashfs
@@ -174,47 +74,54 @@ function initenv {
     echo "debmower: $(date +%H:%M:%S) Mounting unionfs filesystem..." \
           >> $LOGPATH
     unionfs-fuse -o cow,max_files=32768,use_ino,suid,dev \
-                 /tmp/debmower=RW:/mnt/debmower/squashfs=RO \
+                 /mnt/debmower/tmp=RW:/mnt/debmower/squashfs=RO \
                  $CHROOT
     abort_on_fail
     chroot_bind_mounts
     echo "none none none none 0 0" > $CHROOT/etc/mtab
-    if [ ! -f $CACHEDIR/$CACHEIMG.squashfs ]; then
-        updatecache
-    fi
     cp /etc/resolv.conf $CHROOT/etc
+    if [ "$SYSTEM" = "ubuntu" ]; then
+        echo "debmower: $(date +%H:%M:%S) Diverting initctl..." \
+             >> $LOGPATH
+        chroot $CHROOT dpkg-divert --local --rename --add /sbin/initctl &>> $LOGPATH
+        chroot $CHROOT ln -s /bin/true /sbin/initctl
+    fi
     echo "debmower: $(date +%H:%M:%S) Setting up APT sources and updating..." \
          >> $LOGPATH
     echo -e $SOURCESLIST | sed -e "s/RELEASE/$RELEASE/g" \
          > $CHROOT/etc/apt/sources.list
-    LANG=C LANGUAGE=C LC_ALL=C chroot $CHROOT apt-get -q update &>> $LOGPATH.aptlog
+    LANG=C LANGUAGE=C LC_ALL=C chroot $CHROOT apt-get -q update &>> $LOGPATH.extended
     abort_on_fail
     if [ "$UPDATE_TEMPLATE" = "yes" ]; then
         echo "debmower: $(date +%H:%M:%S) Updating template at your request..." \
              >> $LOGPATH
         # Doesn't work in trusty due to policykit-1 bug in 0.105-4ubuntu2.14.04.1
-        chroot $CHROOT apt-get -q -y dist-upgrade &>> $LOGPATH.aptlog
+        chroot $CHROOT apt-get -q -y dist-upgrade &>> $LOGPATH.extended
         abort_on_fail
     fi
-
 }
 
 
 function system_install {
     # Ubuntu 14.04 workarounds...
     touch $CHROOT/etc/init.d/{systemd-logind,whoopsie,modemmanager}
+    echo "debmower: $(date +%H:%M:%S) Setting dbus machine ID..." >> $LOGPATH
+    mkdir -p $CHROOT/var/lib/dbus/
+    dbus-uuidgen > $CHROOT/var/lib/dbus/machine-id ; abort_on_fail
     echo "debmower: $(date +%H:%M:%S) Installing main meta-package..." \
          &>> $LOGPATH
-    chroot $CHROOT ldconfig
+    if [ -f $CHROOT/var/run/dbus/system_bus_socket ]; then
+        chroot $CHROOT /etc/init.d/dbus stop
+        chroot $CHROOT /etc/init.d/dbus start
+    fi
     DEBIAN_FRONTEND=$DEBIAN_FRONTEND chroot $CHROOT $INSTALL \
-                    $MAINMETA &>> $LOGPATH.aptlog ; abort_on_fail
+                    $MAINMETA &>> $LOGPATH.extended ; abort_on_fail
     echo "debmower: $(date +%H:%M:%S) Installing kernel..." >> $LOGPATH
     DEBIAN_FRONTEND=$DEBIAN_FRONTEND chroot $CHROOT $INSTALL \
-                    $KERNEL &>> $LOGPATH.aptlog ; abort_on_fail
-    echo "debmower: tmpfs size is $(df -h /tmp/debmower | grep debmower | awk '{print $2}')" \
+                    $KERNEL &>> $LOGPATH.extended ; abort_on_fail
+    TMPFS_AVAILABLE=$(df -h /mnt/debmower/tmp | grep debmower | awk '{print $2}')
          &>> $LOGPATH
-    echo "debmower: tmpfs usage at end was $(df -h /tmp/debmower | grep debmower | awk '{print $4}')" \
-         &>> $LOGPATH
+    TMPFS_USED=$(df -h /mnt/debmower/tmp | grep debmower | awk '{print $4}')
 }
 
 
@@ -226,13 +133,24 @@ function setup_livecd {
                        | tee $IMAGEDIR/$LIVEDIR/filesystem.manifest \
                          &>> $LOGPATH.manifest
     fi
+    if [ "$SYSTEM" = "debian" ]; then
+        chroot $CHROOT dpkg-query -W --showformat='${Package} ${Version}\n' \
+                       | tee $IMAGEDIR/$LIVEDIR/filesystem.manifest \
+                         &>> $LOGPATH.manifest
+    fi
     # Set up Live CD
     echo "debmower: $(date +%H:%M:%S) Installing live packages..." >> $LOGPATH
-    chroot $CHROOT $INSTALL $LIVECD &>> $LOGPATH.aptlog
+    chroot $CHROOT $INSTALL $LIVECD &>> $LOGPATH.extended
     abort_on_fail
+    #echo "Here's your shellout..."
+    #cp -R /home/jonathan/archives.cp /var/cache/debmower/chroot
+    #chroot /var/cache/debmower/chroot
+    UPDATE_INITRAMFS="yes"
     echo "debmower: $(date +%H:%M:%S) Setting up live kernels..." >> $LOGPATH
     if [ "$UPDATE_INITRAMFS" = "yes" ]; then
+        echo "debmower: $(date +%H:%M:%S) Generating new initramfs..." >> $LOGPATH
         chroot $CHROOT update-initramfs -u &>> $LOGPATH
+        abort_on_fail
     fi
     # The initrd needs to be compressed with lzma, so we need to decompress it from
     # the default gzip first.
@@ -245,34 +163,36 @@ function setup_livecd {
           >> $LOGPATH
     cp  -r $TEMPLATE/* $IMAGEDIR &>> $LOGPATH
     if [ "$GENISOLINUX_STRUCTURE" = "yes" ]; then
+        mkdir -p $IMAGEDIR/isolinux
         echo "debmower: $(date +%H:%M:%S) Configuring isolinux structure..." >> $LOGPATH
         cp /usr/lib/ISOLINUX/isolinux.bin /usr/lib/syslinux/modules/bios/ldlinux.c32 \
            /usr/lib/syslinux/modules/bios/vesamenu.c32 /usr/lib/syslinux/modules/bios/libcom32.c32 \
            /usr/lib/syslinux/modules/bios/libutil.c32 /usr/lib/syslinux/modules/bios/gfxboot.c32 \
            /usr/lib/syslinux/modules/bios/chain.c32 \
            $IMAGEDIR/isolinux/ &>> $LOGPATH ; abort_on_fail
+        #TODO: This will be somewhat more configurable in the future:
+        # Set up live entries:
+        echo -e "label live\n menu label $NAME Live System\n kernel /$LIVEDIR/vmlinuz.efi\n append initrd=/$LIVEDIR/initrd.lz boot=$LIVEDIR config quiet console-setup/layoutcode=us console-setup/layout=USA" > $IMAGEDIR/isolinux/live.cfg
+        echo -e "label memtest\n menu label Memory Test\n kernel $LIVEDIR/memtest" >> $IMAGEDIR/isolinux/live.cfg
+        echo -e "label nextboot\n menu label Boot From Hard Disk\n localboot -1" >> $IMAGEDIR/isolinux/live.cfg
+        echo -e "ui vesamenu\ninclude menu.cfg\ndefault /isolinux/vesamenu.c32\nprompt 0\ntimeout 00" \
+                > $IMAGEDIR/isolinux/isolinux.cfg
+        echo -e "menu hshift 13\nmenu width 49\nmenu title $NAME Boot Menu\ninclude stdmenu.cfg\ninclude live.cfg\nconfig prompt.cfg" > $IMAGEDIR/isolinux/menu.cfg
+        echo -e "prompt 1\ndisplay f1.txt\ntimeout 0\ninclude menu.cfg\ninclude exithelp.cfg\n\nf1 f1.txt\nf2 f2.txt" \
+             > $IMAGEDIR/isolinux/prompt.cfg
+        echo -e "menu background /isolinux/splash.png\nmenu color title * #FFFFFFFF *\nmenu color border * #00000000 #00000000 none\nmenu color sel * #ffffffff #76a1d0ff *\nmenu color hotsel 1;7;37;40 #ffffffff #76a1d0ff *\nmenu color tabmsg       * #ffffffff #00000000 *\nmenu color help 37;40 #ffdddd00 #00000000 none\nmenu vshift 12\nmenu rows 10\nmenu helpmsgrow 15\nmenu cmdlinerow 16\nmenu timeoutrow 16\nmenu tabmsgrow 18\nmenu tabmsg Press ENTER to boot or TAB to edit a menu entry" > $IMAGEDIR/isolinux/stdmenu.cfg
     fi
 
-    echo "debmower: $(date +%H:%M:%S) Setting dbus machine ID..." >> $LOGPATH
-    mkdir -p $CHROOT/var/lib/dbus/
-    dbus-uuidgen > $CHROOT/var/lib/dbus/machine-id ; abort_on_fail
     if [ -f "$TEMPLATE/README.diskdefines" ]; then
         cp $TEMPLATE/README.diskdefines $IMAGEDIR/
     else
-        cat << EOF > $IMAGEDIR/README.diskdefines
-#define DISKNAME  $NAME - $ARCH
-#define TYPE binary
-#define TYPEbinary 1
-#define ARCH $ARCH
-#define ARCH$ARCH 1
-#define DISKNUM 1
-#define DISKNUM1 1
-#define TOTALNUM 0
-#define TOTALNUM0 1
-EOF
+        #TODO: new variable $CODENAME
+        mkdir -p $TEMPLATE/.disk
+        echo -e "#define DISKNAME  $NAME \"CODENAME\" - Release $ARCH\n#define TYPE binary\n#define TYPEbinary 1\n#define ARCH $ARCH\n#define ARCH$ARCH 1\n#define DISKNUM 1\n#define DISKNUM1 1\n#define TOTALNUM 0\n#define TOTALNUM0 1\n" > $IMAGEDIR/README.diskdefines
+    touch $TEMPLATE/.disk/base_installable
+    echo "dvd/single" > $TEMPLATE/.disk/cd_type
     fi
-
-    # Copy Custom CD root data
+    # Copy CD root data
     if [ -d $TEMPLATE/cdroot ]; then
         cp -r $TEMPLATE/cdroot/. $IMAGEDIR/
     fi
@@ -280,6 +200,8 @@ EOF
     # Write unique ID for this disk
     mkdir -p $IMAGEDIR/.disk
     echo $BUILD_ID > $IMAGEDIR/.disk/casper-uuid-generic
+    echo "$NAME $VERSION \"$DESC\" - Release $ARCH (19700101)" \
+         > $IMAGEDIR/.disk/info
 
     # Write, release-url, if set
     if [ ! -z $RELEASE_NOTES_URL ]; then
@@ -291,14 +213,21 @@ EOF
         cp /boot/memtest86+.bin $IMAGEDIR/isolinux/mt86plus
     fi
 
-    echo "debmower: $(date +%H:%M:%S) Cleaning up..." >> $LOGPATH
+    echo "debmower: $(date +%H:%M:%S) Cleaning up chroot data..." >> $LOGPATH
+    chroot $CHROOT /etc/init.d/dbus stop
+    rm -f $CHROOT/var/run/dbus/system_bus_socket
+    if [ "$SYSTEM" = "ubuntu" ]; then
+        rm $CHROOT/sbin/initctl
+        chroot $CHROOT dpkg-divert --rename --remove /sbin/initctl
+    fi
     chroot $CHROOT apt-get clean
     rm -rf $CHROOT/tmp/*
     echo "nameserver 127.0.1.1" > $CHROOT/etc/resolv.conf
+    chroot $CHROOT rm -rf /var/lib/dbus/machine-id /tmp/*
     chroot_bind_unmounts
     echo "localhost" > $CHROOT/etc/hostname
     if [ "$AUTOREMOVE" = "yes" ]; then
-        chroot $CHROOT apt-get -qq -y autoremove &>> $LOGPATH.aptlog
+        chroot $CHROOT apt-get -qq -y autoremove &>> $LOGPATH.extended
     fi
     # Create a manifest file if we use Ubiquity (or for now, Ubuntu, at least)
     if [ "$SYSTEM" = "ubuntu" ]; then
@@ -306,24 +235,20 @@ EOF
                        > $IMAGEDIR/$LIVEDIR/filesystem.manifest-afterlive
         MANIFEST_PKG=$(wc -l $IMAGEDIR/$LIVEDIR/filesystem.manifest | awk '{print $1}')
         cp $IMAGEDIR/$LIVEDIR/filesystem.manifest{,-desktop}
-        REMOVE="ubiquity casper user-setup discover1 xresprobe \
-                libdebian-installer4 os-prober apt-clone archdetect-deb \
-                dpkg-repack localechooser-data lvm2 python3-icu rdate ubiquity-casper \
-                watershed ubiquity-ubuntu-artwork libdevmapper-event1.02.1 \
-                ubiquity-slideshow-ubuntu $LIVECD"
+        diff $IMAGEDIR/$LIVEDIR/filesystem.manifest $IMAGEDIR/$LIVEDIR/filesystem.manifest-afterlive \
+                     | grep ">" | sed "s/> //g" > $IMAGEDIR/$LIVEDIR/filesystem.manifest-remove
+        rm $IMAGEDIR/$LIVEDIR/filesystem.manifest-afterlive
+        REMOVE=$(awk '{print $1}' $IMAGEDIR/$LIVEDIR/filesystem.manifest-remove)
         for package in $REMOVE; do
             sed -i "/${package}/d" $IMAGEDIR/$LIVEDIR/filesystem.manifest-desktop
-        done
-        for package in $REMOVE; do
-            echo $package >> $IMAGEDIR/$LIVEDIR/filesystem.manifest-remove
         done
         MANIFEST_PKG_RM=$(wc -l $IMAGEDIR/$LIVEDIR/filesystem.manifest-remove | \
                           awk '{print $1}')
     fi
     if [ "$STORE_DPKGDB" = "yes" ]; then
         mkdir -p /var/cache/debmower/builddata/$BUILD_ID/
-        mksquashfs $CHROOT/var/lib/dpkg /var/cache/debmower/builddata/$BUILD_ID/dpkgdb.squashfs \
-                   -noappend &>> $LOGPATH
+        mksquashfs $CHROOT/var/lib/dpkg /var/cache/debmower/builddata/$BUILD_ID/dpkgdb.extended \
+                   -noappend &>> $LOGPATH.extended
     fi
     echo "Top 10 biggest packages:" &>> $LOGPATH
     chroot $CHROOT dpkg-query -W --showformat='${Installed-Size}\t${Package}\n' | sort -nr | head -n 10 \
@@ -362,8 +287,8 @@ function build_cd_image {
     echo "debmower: $(date +%H:%M:%S) Cleaning up..." >> $LOGPATH
     umount -l $CHROOT
     umount -l /mnt/debmower/squashfs
-    umount -l -f /tmp/debmower 
-    rm -rf /tmp/debmower
+    umount -l -f /mnt/debmower/tmp > /dev/null
+    rmdir /mnt/debmower/tmp
     rm -rf /mnt/debmower
     if [ ! "$KEEP_IMAGEDIR" = "yes" ]; then
         rm -rf $IMAGEDIR
@@ -374,49 +299,91 @@ function build_cd_image {
 function updatecache {
     mkdir -p $CACHEDIR
     cd $CACHEDIR
-    mkdir -p /tmp/debmower
-    # You can set TMPFS_SIZE=1000m, to set custom tmpfs size 
-    if [ -z "$TMPFS_SIZE" ]; then
+    mkdir -p /mnt/debmower/tmp
+    # You can set TMPFS_SIZE=1000m, to set custom tmpfs size
+    if [ ! -z "$TMPFS_SIZE" ]; then
         SIZEOPT="-o size=$TMPFS_SIZE"
     fi
-    mount -t tmpfs tmpfs /tmp/debmower $SIZEOPT
-    echo " * $(date +%H:%M:%S) Performing initial debootstrapping for $RELEASE..."
-    CHROOT=tmpfs/chroot
-    debootstrap $RELEASE $CHROOT $DEBOOTSTRAP_MIRROR &>> $LOGPATH
-    echo " * $(date +%H:%M:%S) Installing standard packages..." \
-         &>> $LOGFILE.updatecache
+    mount -t tmpfs tmpfs /mnt/debmower/tmp #$SIZEOPT
+    echo " * $(date +%H:%M:%S) Performing initial debootstrapping for $RELEASE..." >> $LOGPATH
+    CHROOT=/mnt/debmower/chroot
+    debootstrap $RELEASE $CHROOT $DEBOOTSTRAP_MIRROR &>> $LOGPATH.extended ; abort_on_fail
     chroot_bind_mounts
-    if [ "$CACHEPACKAGES" != "" ]; then
-        chroot $CHROOT apt-get --force-yes -qq -y $CACHEPACKAGES \
-        &>> $LOGPATH
+    if [ ! -z "$CACHEPACKAGES" ]; then
+    echo "debmower: $(date +%H:%M:%S) Setting up APT sources and updating..." \
+         >> $LOGPATH
+    echo -e $SOURCESLIST | sed -e "s/RELEASE/$RELEASE/g" \
+         > $CHROOT/etc/apt/sources.list
+    LANG=C LANGUAGE=C LC_ALL=C chroot $CHROOT apt-get -q update &>> $LOGPATH.extended
+        echo " * $(date +%H:%M:%S) Installing requested cache packages..." \
+             &>> $LOGPATH
+        DEBIAN_FRONTEND=$DEBIAN_FRONTEND chroot $CHROOT $INSTALL $CACHEPACKAGES \
+               &>> $LOGPATH.extended
+        abort_on_fail
     fi
     echo "debmower: cleaning up..." &>> $LOGPATH
-    echo "debmower: tmpfs size is $(df -h /tmp/debmower | grep debmower | awk '{print $2}')" \
+    echo "debmower: tmpfs size is $(df -h /mnt/debmower/tmp | grep debmower | awk '{print $2}')" \
          &>> $LOGPATH
-    echo "debmower: tmpfs usage at end was $(df -h /tmp/debmower | grep debmower | awk '{print $4}')" \
+    echo "debmower: tmpfs usage at end was $(df -h /mnt/debmower/tmp | grep debmower | awk '{print $4}')" \
          &>> $LOGPATH
     chroot $CHROOT apt-get clean
-    chroot_bind_unmounts
-    echo "debmower: ... done" &>> $LOGPATH
+    chroot_bind_unmounts &>> /dev/null
     # generate squashfs for future ramdisk use
-    echo " * $(date +%H:%M:%S) Creating $RELEASE squashfs..."
-    mksquashfs $CHROOT $CACHEDIR/$CACHEIMG.squashfs -noappend #FIXME logs? abortonfail?
-    rm -rf "$CHROOT"
-    umount -l /tmp/debmower
-    rmdir /tmp/debmower
+    echo " * $(date +%H:%M:%S) Creating $CACHEIMG squashfs cache file..." >> $LOGPATH
+    mksquashfs $CHROOT $CACHEDIR/$CACHEIMG.squashfs -noappend -no-progress &> LOGPATH.extended ; abort_on_fail
+    umount -f -l /mnt/debmower/tmp &> /dev/null
+    umount -f -l /mnt/debmower &> /dev/null
+    rm -rf /mnt/debmower
     cd ..
     echo "debmower: ... done" &>> $LOGPATH
+    chroot_bind_unmounts &>> /dev/null
+}
+
+
+function create_pkg_pool {
+    if [ ! -z "$POOL_PKGS" ]; then
+        echo " * $(date +%H:%M:%S) debmower: Setting up package pool..." > $LOGPATH
+        chroot $CHROOT apt-get clean
+        echo " * $(date +%H:%M:%S)  Downloading $POOL_PKGS" > $LOGPATH
+        export POOL_PKGS
+        # this is needed if we change network since template build
+        cp /etc/resolv.conf $CHROOT/etc/
+        chroot $CHROOT apt-get -y -d install $POOL_PKGS >> $LOGPATH.extended
+        abort_on_fail
+        mkdir -p /var/cache/debmower/pool_pkg
+        cp -r $CHROOT/var/cache/apt/archives/*deb /var/cache/debmower/pool_pkg
+        if [ ! -z $POOL_PKGS_DIR ]; then
+            echo " * $(date +%H:%M:%S) debmower: Copying additional pool packages..." >> $LOGPATH
+            cp -r $POOL_PKGS_DIR/*deb /var/cache/debmower/pool_pkg
+            abort_on_fail
+        fi
+        mkdir -p /var/cache/debmower/pool_pkg/archives/conf
+        # FIXME: Architectures hardcoded:
+        echo -e "Codename: $RELEASE\nComponents:main\nArchitectures: i386 amd64" \
+                > /var/cache/debmower/pool_pkg/archives/conf/distributions
+        echo " * $(date +%H:%M:%S) debmower: Generating pool indices..." >> $LOGPATH
+        reprepro -b /var/cache/debmower/pool_pkg/archives/ includedeb $RELEASE /var/cache/debmower/pool_pkg/*deb >> $LOGPATH.extended
+        abort_on_fail
+        cp -R /var/cache/debmower/pool_pkg/archives/{pool,dists} $IMAGEDIR
+        chroot $CHROOT apt-get clean
+        rm -rf /var/cache/debmower/pool_pkg
+    fi
 }
 
 
 function generate_reports {
     echo "debmower: REPORT: Main meta used is $MAINMETA and live is $LIVECD" >> $LOGPATH
     echo "debmower: REPORT: This $IMAGETYPE uses $COMP for squashfs compression" >> $LOGPATH
+    #TODO: Check whether manifests exist before reporting on it
     echo "debmower: REPORT: Total packages in manifest: $MANIFEST_PKG packages" \
           >> $LOGPATH
     echo "debmower: REPORT: Live package manifest: $MANIFEST_PKG_RM packages" \
           >> $LOGPATH
     echo "debmower: REPORT: Templates dir: $TEMPLATE" >> $LOGPATH
+    echo "debmower: REPORT: tmpfs available size: $TMPFS_AVAILABLE" \
+         &>> $LOGPATH
+    echo "debmower: REPORT: tmpfs used: $TMPFS_USED" \
+         &>> $LOGPATH
     echo "debmower: REPORT: Built from cached image: $CACHEIMG" >> $LOGPATH
     echo "debmower: REPORT: Squashfs image size is: $SQUASHFS_SIZE" >> $LOGPATH
     echo "debmower: REPORT: Package pool size is: $PKG_POOL_SIZE" >> $LOGPATH
@@ -430,8 +397,9 @@ function abort_build {
     umount -f -l /mnt/debmower/squashfs
     chroot_bind_unmounts
     umount -f -l $CHROOT
-    umount /tmp/debmower 
-    rmdir /tmp/debmower/
+    umount -f -l /mnt/debmower/tmp > /dev/null
+    umount -f -l /mnt/debmower > /dev/null
+    rmdir /mnt/debmower/
     exit 299
 }
 
@@ -441,11 +409,13 @@ function abort_on_fail {
         echo "debmower: $(date +%H:%M:%S) ... completed successfully" \
         >> $LOGPATH
     else
-        echo "debmower: ... step has failed," \
+        echo "debmower: $(date +%H:%M:%S) ... step has failed," \
         >> $LOGPATH
         echo "          There is no point in going on." >> $LOGPATH
-        # exit with generic error
-        exit 1
+        abort_build
+    for mountpoint in $(mount | grep debmower | awk '{print $3}');
+        do umount -f -l $mountpoint; &> /dev/null
+    done
     fi
 }
 
@@ -478,5 +448,6 @@ trap abort_build 2
 initenv
 system_install
 setup_livecd
+create_pkg_pool
 build_cd_image
 generate_reports
