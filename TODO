@@ -7,20 +7,16 @@ A kind of roadmap / todo list.
  * [done] Store release_notes_url if configured
  * hundreds of smaller changes that spanned from 2009 until 2015!
 
-[0.4] Anticipated release date 2015-05-31
- * Rework Manifests so that it properly calculates packages to be removed
+[0.4] Anticipated release date 2015-10-31
+ * [done]Rework Manifests so that it properly calculates packages to be removed
  * Check if there's enough disk space on the right paths before starting
  * Proper ramdisk (tmpfs) support
  * Add a way to import keys for archives
- * Be able to specify packages that must be shipped on CD pool
- * Preconfigure for configuration management systems (bcfg2, puppet, cfengine,
-   etc) generic item [TODO]
- * Implement an easy way to support configuration preseeds, most notable for
-   stuff like grub, java plugins, etc
+ * [done] Be able to specify packages that must be shipped on CD pool
  * Reduce needs for templates to minimum
- * html page for autorun.inf config
 
 [future]
+ * html page for autorun.inf config
  * Possible Fedora support using yum + febootstrap
  * Possible Debian GNU/Hurd 2015 support
  * Possible Linux Mint support
@@ -29,6 +25,7 @@ A kind of roadmap / todo list.
  * Add target for KVM
  * Add target for LXC
  * Add target for USB disk
-
-[error-checking-wishlist]
- * Check if PPA sources fail, eg: "W: failed to fetch"...
+ * Preconfigure for configuration management systems (bcfg2, puppet, cfengine,
+   etc) generic item [TODO]
+ * Implement an easy way to support configuration preseeds, most notable for
+   stuff like grub, java plugins, etc
