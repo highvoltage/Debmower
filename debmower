@@ -54,15 +54,15 @@ fi
 function initenv {
     # Initialise environment
     echo "Debmower version $DEBMOWER, building $NAME, from $SYSTEM $RELEASE $ARCH packages" \
-         > "$LOGPATH"
+         > $LOGPATH
     if [ ! -f $CACHEDIR/$CACHEIMG.squashfs ]; then
         updatecache
     fi
-    echo "debmower: this build ID is $BUILD_ID" >> "$LOGPATH"
-    echo "" > "$LOGPATH".extended
-    echo "debmower: $(date +%H:%M:%S) Preparing directories..." >> "$LOGPATH"
+    echo "debmower: this build ID is $BUILD_ID" >> $LOGPATH
+    echo "" > $LOGPATH.extended
+    echo "debmower: $(date +%H:%M:%S) Preparing directories..." >> $LOGPATH
     rm -rf $IMAGEDIR $CHROOT
-    echo "debmower: $(date +%H:%M:%S) (enabling a ramdisk build)" >> "$LOGPATH"
+    echo "debmower: $(date +%H:%M:%S) (enabling a ramdisk build)" >> $LOGPATH
 
     mkdir -p /mnt/debmower/tmp
     mount -t tmpfs tmpfs /mnt/debmower/tmp
@@ -72,7 +72,7 @@ function initenv {
     mount $CACHEDIR/$CACHEIMG.squashfs /mnt/debmower/squashfs
 
     echo "debmower: $(date +%H:%M:%S) Mounting unionfs filesystem..." \
-          >> "$LOGPATH"
+          >> $LOGPATH
     unionfs-fuse -o cow,max_files=32768,use_ino,suid,dev \
                  /mnt/debmower/tmp=RW:/mnt/debmower/squashfs=RO \
                  $CHROOT || abort_on_fail
@@ -81,31 +81,21 @@ function initenv {
     cp /etc/resolv.conf $CHROOT/etc
     if [ "$SYSTEM" = "ubuntu" ]; then
         echo "debmower: $(date +%H:%M:%S) Diverting initctl..." \
-             >> "$LOGPATH"
-        chroot $CHROOT dpkg-divert --local --rename --add /sbin/initctl &>> "$LOGPATH"
+             >> $LOGPATH
+        chroot $CHROOT dpkg-divert --local --rename --add /sbin/initctl &>> $LOGPATH
         chroot $CHROOT ln -s /bin/true /sbin/initctl
     fi
     echo "debmower: $(date +%H:%M:%S) Setting up APT sources and updating..." \
-         >> "$LOGPATH"
+         >> $LOGPATH
     echo -e $SOURCESLIST | sed -e "s/RELEASE/$RELEASE/g" \
          > $CHROOT/etc/apt/sources.list
-<<<<<<< HEAD
-    LANG=C LANGUAGE=C LC_ALL=C chroot $CHROOT apt-get -q update &>> "$LOGPATH".extended
-    abort_on_fail
-=======
     LANG=C LANGUAGE=C LC_ALL=C chroot $CHROOT apt-get -q update \
            &>> $LOGPATH.extended || abort_on_fail
->>>>>>> d361ced7ac8fc7501e78f2e62caece6bb94e7a7b
     if [ "$UPDATE_TEMPLATE" = "yes" ]; then
         echo "debmower: $(date +%H:%M:%S) Updating template at your request..." \
-             >> "$LOGPATH"
+             >> $LOGPATH
         # Doesn't work in trusty due to policykit-1 bug in 0.105-4ubuntu2.14.04.1
-<<<<<<< HEAD
-        chroot $CHROOT apt-get -q -y dist-upgrade &>> "$LOGPATH".extended
-        abort_on_fail
-=======
         chroot $CHROOT apt-get -q -y dist-upgrade &>> $LOGPATH.extended || abort_on_fail
->>>>>>> d361ced7ac8fc7501e78f2e62caece6bb94e7a7b
     fi
 }
 
@@ -113,29 +103,22 @@ function initenv {
 function system_install {
     # Ubuntu 14.04 workarounds...
     touch $CHROOT/etc/init.d/{systemd-logind,whoopsie,modemmanager}
-    echo "debmower: $(date +%H:%M:%S) Setting dbus machine ID..." >> "$LOGPATH"
+    echo "debmower: $(date +%H:%M:%S) Setting dbus machine ID..." >> $LOGPATH
     mkdir -p $CHROOT/var/lib/dbus/
     dbus-uuidgen > $CHROOT/var/lib/dbus/machine-id || abort_on_fail
     echo "debmower: $(date +%H:%M:%S) Installing main meta-package..." \
-         &>> "$LOGPATH"
+         &>> $LOGPATH
     if [ -f $CHROOT/var/run/dbus/system_bus_socket ]; then
         chroot $CHROOT /etc/init.d/dbus stop
         chroot $CHROOT /etc/init.d/dbus start
     fi
     DEBIAN_FRONTEND=$DEBIAN_FRONTEND chroot $CHROOT $INSTALL \
-<<<<<<< HEAD
-                    $MAINMETA &>> "$LOGPATH".extended ; abort_on_fail
-    echo "debmower: $(date +%H:%M:%S) Installing kernel..." >> "$LOGPATH"
-    DEBIAN_FRONTEND=$DEBIAN_FRONTEND chroot $CHROOT $INSTALL \
-                    $KERNEL &>> "$LOGPATH".extended ; abort_on_fail
-=======
                     $MAINMETA &>> $LOGPATH.extended || abort_on_fail
     echo "debmower: $(date +%H:%M:%S) Installing kernel..." >> $LOGPATH
     DEBIAN_FRONTEND=$DEBIAN_FRONTEND chroot $CHROOT $INSTALL \
                     $KERNEL &>> $LOGPATH.extended || abort_on_fail
->>>>>>> d361ced7ac8fc7501e78f2e62caece6bb94e7a7b
     TMPFS_AVAILABLE=$(df -h /mnt/debmower/tmp | grep debmower | awk '{print $2}')
-         &>> "$LOGPATH"
+         &>> $LOGPATH
     TMPFS_USED=$(df -h /mnt/debmower/tmp | grep debmower | awk '{print $4}')
 }
 
@@ -146,59 +129,43 @@ function setup_livecd {
     if [ "$SYSTEM" = "ubuntu" ]; then
         chroot $CHROOT dpkg-query -W --showformat='${Package} ${Version}\n' \
                        | tee $IMAGEDIR/$LIVEDIR/filesystem.manifest \
-                         &>> "$LOGPATH".manifest
+                         &>> $LOGPATH.manifest
     fi
     if [ "$SYSTEM" = "debian" ]; then
         chroot $CHROOT dpkg-query -W --showformat='${Package} ${Version}\n' \
                        | tee $IMAGEDIR/$LIVEDIR/filesystem.manifest \
-                         &>> "$LOGPATH".manifest
+                         &>> $LOGPATH.manifest
     fi
     # Set up Live CD
-<<<<<<< HEAD
-    echo "debmower: $(date +%H:%M:%S) Installing live packages..." >> "$LOGPATH"
-    chroot $CHROOT $INSTALL $LIVECD &>> "$LOGPATH".extended
-    abort_on_fail
-=======
     echo "debmower: $(date +%H:%M:%S) Installing live packages..." >> $LOGPATH
     chroot $CHROOT $INSTALL $LIVECD &>> $LOGPATH.extended || abort_on_fail
->>>>>>> d361ced7ac8fc7501e78f2e62caece6bb94e7a7b
     #echo "Here's your shellout..."
     #cp -R /home/jonathan/archives.cp /var/cache/debmower/chroot
     #chroot /var/cache/debmower/chroot
     UPDATE_INITRAMFS="yes"
-    echo "debmower: $(date +%H:%M:%S) Setting up live kernels..." >> "$LOGPATH"
+    echo "debmower: $(date +%H:%M:%S) Setting up live kernels..." >> $LOGPATH
     if [ "$UPDATE_INITRAMFS" = "yes" ]; then
-<<<<<<< HEAD
-        echo "debmower: $(date +%H:%M:%S) Generating new initramfs..." >> "$LOGPATH"
-        chroot $CHROOT update-initramfs -u &>> "$LOGPATH"
-        abort_on_fail
-=======
         echo "debmower: $(date +%H:%M:%S) Generating new initramfs..." >> $LOGPATH
         chroot $CHROOT update-initramfs -u &>> $LOGPATH || abort_on_fail
->>>>>>> d361ced7ac8fc7501e78f2e62caece6bb94e7a7b
     fi
     # The initrd needs to be compressed with lzma, so we need to decompress it from
     # the default gzip first.
-    cp $CHROOT/boot/vmlinuz-* $IMAGEDIR/$LIVEDIR/vmlinuz.efi &>> "$LOGPATH"
-    cp $CHROOT/boot/initrd.img-* $IMAGEDIR/$LIVEDIR/initrd.img.gz &>> "$LOGPATH"
-    gzip -d $IMAGEDIR/$LIVEDIR/initrd.img.gz &>> "$LOGPATH"
-    lzma $IMAGEDIR/$LIVEDIR/initrd.img &>> "$LOGPATH"
+    cp $CHROOT/boot/vmlinuz-* $IMAGEDIR/$LIVEDIR/vmlinuz.efi &>> $LOGPATH
+    cp $CHROOT/boot/initrd.img-* $IMAGEDIR/$LIVEDIR/initrd.img.gz &>> $LOGPATH
+    gzip -d $IMAGEDIR/$LIVEDIR/initrd.img.gz &>> $LOGPATH
+    lzma $IMAGEDIR/$LIVEDIR/initrd.img &>> $LOGPATH
     mv $IMAGEDIR/$LIVEDIR/initrd.img.lzma $IMAGEDIR/$LIVEDIR/initrd.lz
     echo "debmower: $(date +%H:%M:%S) Copying cdimage boot files and artwork..." \
-          >> "$LOGPATH"
-    cp  -r $TEMPLATE/* $IMAGEDIR &>> "$LOGPATH"
+          >> $LOGPATH
+    cp  -r $TEMPLATE/* $IMAGEDIR &>> $LOGPATH
     if [ "$GENISOLINUX_STRUCTURE" = "yes" ]; then
         mkdir -p $IMAGEDIR/isolinux
-        echo "debmower: $(date +%H:%M:%S) Configuring isolinux structure..." >> "$LOGPATH"
+        echo "debmower: $(date +%H:%M:%S) Configuring isolinux structure..." >> $LOGPATH
         cp /usr/lib/ISOLINUX/isolinux.bin /usr/lib/syslinux/modules/bios/ldlinux.c32 \
            /usr/lib/syslinux/modules/bios/vesamenu.c32 /usr/lib/syslinux/modules/bios/libcom32.c32 \
            /usr/lib/syslinux/modules/bios/libutil.c32 /usr/lib/syslinux/modules/bios/gfxboot.c32 \
            /usr/lib/syslinux/modules/bios/chain.c32 \
-<<<<<<< HEAD
-           $IMAGEDIR/isolinux/ &>> "$LOGPATH" ; abort_on_fail
-=======
            $IMAGEDIR/isolinux/ &>> $LOGPATH || abort_on_fail
->>>>>>> d361ced7ac8fc7501e78f2e62caece6bb94e7a7b
         #TODO: This will be somewhat more configurable in the future:
         # Set up live entries:
         echo -e "label live\n menu label $NAME Live System\n kernel /$LIVEDIR/vmlinuz.efi\n append initrd=/$LIVEDIR/initrd.lz boot=$LIVEDIR config quiet console-setup/layoutcode=us console-setup/layout=USA" > $IMAGEDIR/isolinux/live.cfg
@@ -242,7 +209,7 @@ function setup_livecd {
         cp /boot/memtest86+.bin $IMAGEDIR/isolinux/mt86plus
     fi
 
-    echo "debmower: $(date +%H:%M:%S) Cleaning up chroot data..." >> "$LOGPATH"
+    echo "debmower: $(date +%H:%M:%S) Cleaning up chroot data..." >> $LOGPATH
     chroot $CHROOT /etc/init.d/dbus stop
     rm -f $CHROOT/var/run/dbus/system_bus_socket
     if [ "$SYSTEM" = "ubuntu" ]; then
@@ -256,7 +223,7 @@ function setup_livecd {
     chroot_bind_unmounts
     echo "localhost" > $CHROOT/etc/hostname
     if [ "$AUTOREMOVE" = "yes" ]; then
-        chroot $CHROOT apt-get -qq -y autoremove &>> "$LOGPATH".extended
+        chroot $CHROOT apt-get -qq -y autoremove &>> $LOGPATH.extended
     fi
     # Create a manifest file if we use Ubiquity (or for now, Ubuntu, at least)
     if [ "$SYSTEM" = "ubuntu" ]; then
@@ -277,30 +244,25 @@ function setup_livecd {
     if [ "$STORE_DPKGDB" = "yes" ]; then
         mkdir -p /var/cache/debmower/builddata/$BUILD_ID/
         mksquashfs $CHROOT/var/lib/dpkg /var/cache/debmower/builddata/$BUILD_ID/dpkgdb.extended \
-                   -noappend &>> "$LOGPATH".extended
+                   -noappend &>> $LOGPATH.extended
     fi
-    echo "Top 10 biggest packages:" &>> "$LOGPATH"
+    echo "Top 10 biggest packages:" &>> $LOGPATH
     chroot $CHROOT dpkg-query -W --showformat='${Installed-Size}\t${Package}\n' | sort -nr | head -n 10 \
-           &>> "$LOGPATH"
-    echo "debmower: debsums report:" >> "$LOGPATH"
-    debsums -c -r $CHROOT &>> "$LOGPATH"
-    echo "End of debsums report." >> "$LOGPATH"
+           &>> $LOGPATH
+    echo "debmower: debsums report:" >> $LOGPATH
+    debsums -c -r $CHROOT &>> $LOGPATH
+    echo "End of debsums report." >> $LOGPATH
 }
 
 
 function build_cd_image {
-    echo "debmower: $(date +%H:%M:%S) Creating squashfs image..." >> "$LOGPATH"
+    echo "debmower: $(date +%H:%M:%S) Creating squashfs image..." >> $LOGPATH
     mksquashfs $CHROOT $IMAGEDIR/$LIVEDIR/filesystem.squashfs \
                -b $BLOCKSIZE -comp $COMP -noappend -no-progress \
-<<<<<<< HEAD
-               &> "$LOGPATH".squashfs ; abort_on_fail
-    echo "debmower: $(date +%H:%M:%S) Creating md5sums..." >> "$LOGPATH"
-=======
                &> $LOGPATH.squashfs || abort_on_fail
     echo "debmower: $(date +%H:%M:%S) Creating md5sums..." >> $LOGPATH
->>>>>>> d361ced7ac8fc7501e78f2e62caece6bb94e7a7b
     (cd $IMAGEDIR && find . -type f -print0 | xargs -0 md5sum > md5sum.txt)
-    echo "debmower: $(date +%H:%M:%S) Creating iso image..." >> "$LOGPATH"
+    echo "debmower: $(date +%H:%M:%S) Creating iso image..." >> $LOGPATH
     cd $IMAGEDIR
     xorriso -as mkisofs -r -V "$IMAGE_NAME" -J -l \
                 -isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin \
@@ -308,11 +270,7 @@ function build_cd_image {
                 -c isolinux/boot.cat -no-emul-boot -boot-load-size 4 \
                  -eltorito-boot isolinux/isolinux.bin \
                 -boot-info-table -o $ISOPATH/$ISONAME . \
-<<<<<<< HEAD
-                &> "$LOGPATH".xorriso ; abort_on_fail
-=======
                 &> $LOGPATH.xorriso || abort_on_fail
->>>>>>> d361ced7ac8fc7501e78f2e62caece6bb94e7a7b
     SQUASHFS_SIZE=$(du -sh $IMAGEDIR/$LIVEDIR/filesystem.squashfs \
                     | awk '{print $1}')
     if [ -d "$IMAGEDIR/pool" ]; then
@@ -322,7 +280,7 @@ function build_cd_image {
     fi
     ISO_SIZE=$(du -sh $ISOPATH/$ISONAME | awk '{print $1}')
 
-    echo "debmower: $(date +%H:%M:%S) Cleaning up..." >> "$LOGPATH"
+    echo "debmower: $(date +%H:%M:%S) Cleaning up..." >> $LOGPATH
     umount -l $CHROOT
     umount -l /mnt/debmower/squashfs
     umount -l -f /mnt/debmower/tmp > /dev/null
@@ -343,94 +301,62 @@ function updatecache {
         SIZEOPT="-o size=$TMPFS_SIZE"
     fi
     mount -t tmpfs tmpfs /mnt/debmower/tmp #$SIZEOPT
-    echo " * $(date +%H:%M:%S) Performing initial debootstrapping for $RELEASE..." >> "$LOGPATH"
+    echo " * $(date +%H:%M:%S) Performing initial debootstrapping for $RELEASE..." >> $LOGPATH
     CHROOT=/mnt/debmower/chroot
-<<<<<<< HEAD
-    debootstrap --arch=$ARCH $RELEASE $CHROOT \
-                $DEBOOTSTRAP_MIRROR &>> "$LOGPATH".extended ; abort_on_fail
-=======
     debootstrap $RELEASE $CHROOT $DEBOOTSTRAP_MIRROR &>> $LOGPATH.extended || abort_on_fail
->>>>>>> d361ced7ac8fc7501e78f2e62caece6bb94e7a7b
     chroot_bind_mounts
     if [ ! -z "$CACHEPACKAGES" ]; then
     echo "debmower: $(date +%H:%M:%S) Setting up APT sources and updating..." \
-         >> "$LOGPATH"
+         >> $LOGPATH
     echo -e $SOURCESLIST | sed -e "s/RELEASE/$RELEASE/g" \
          > $CHROOT/etc/apt/sources.list
-    LANG=C LANGUAGE=C LC_ALL=C chroot $CHROOT apt-get -q update &>> "$LOGPATH".extended
+    LANG=C LANGUAGE=C LC_ALL=C chroot $CHROOT apt-get -q update &>> $LOGPATH.extended
         echo " * $(date +%H:%M:%S) Installing requested cache packages..." \
-             &>> "$LOGPATH"
+             &>> $LOGPATH
         DEBIAN_FRONTEND=$DEBIAN_FRONTEND chroot $CHROOT $INSTALL $CACHEPACKAGES \
-<<<<<<< HEAD
-               &>> "$LOGPATH".extended
-        abort_on_fail
-=======
                &>> $LOGPATH.extended || abort_on_fail
->>>>>>> d361ced7ac8fc7501e78f2e62caece6bb94e7a7b
     fi
-    echo "debmower: cleaning up..." &>> "$LOGPATH"
+    echo "debmower: cleaning up..." &>> $LOGPATH
     echo "debmower: tmpfs size is $(df -h /mnt/debmower/tmp | grep debmower | awk '{print $2}')" \
-         &>> "$LOGPATH"
+         &>> $LOGPATH
     echo "debmower: tmpfs usage at end was $(df -h /mnt/debmower/tmp | grep debmower | awk '{print $4}')" \
-         &>> "$LOGPATH"
+         &>> $LOGPATH
     chroot $CHROOT apt-get clean
     chroot_bind_unmounts &>> /dev/null
     # generate squashfs for future ramdisk use
-<<<<<<< HEAD
-    echo " * $(date +%H:%M:%S) Creating $CACHEIMG squashfs cache file..." >> "$LOGPATH"
-    mksquashfs $CHROOT $CACHEDIR/$CACHEIMG.squashfs -noappend -no-progress &> LOGPATH.extended ; abort_on_fail
-=======
     echo " * $(date +%H:%M:%S) Creating $CACHEIMG squashfs cache file..." >> $LOGPATH
     mksquashfs $CHROOT $CACHEDIR/$CACHEIMG.squashfs -noappend -no-progress &> LOGPATH.extended || abort_on_fail
->>>>>>> d361ced7ac8fc7501e78f2e62caece6bb94e7a7b
     umount -f -l /mnt/debmower/tmp &> /dev/null
     umount -f -l /mnt/debmower &> /dev/null
     rm -rf /mnt/debmower
     cd ..
-    echo "debmower: ... done" &>> "$LOGPATH"
+    echo "debmower: ... done" &>> $LOGPATH
     chroot_bind_unmounts &>> /dev/null
 }
 
 
 function create_pkg_pool {
     if [ ! -z "$POOL_PKGS" ]; then
-        echo " * $(date +%H:%M:%S) debmower: Setting up package pool..." > "$LOGPATH"
+        echo " * $(date +%H:%M:%S) debmower: Setting up package pool..." > $LOGPATH
         chroot $CHROOT apt-get clean
-        echo " * $(date +%H:%M:%S)  Downloading $POOL_PKGS" > "$LOGPATH"
+        echo " * $(date +%H:%M:%S)  Downloading $POOL_PKGS" > $LOGPATH
         export POOL_PKGS
         # this is needed if we change network since template build
         cp /etc/resolv.conf $CHROOT/etc/
-<<<<<<< HEAD
-        chroot $CHROOT apt-get -y -d install $POOL_PKGS >> "$LOGPATH".extended
-        abort_on_fail
-        mkdir -p /var/cache/debmower/pool_pkg
-        cp -r $CHROOT/var/cache/apt/archives/*deb /var/cache/debmower/pool_pkg
-        if [ ! -z $POOL_PKGS_DIR ]; then
-            echo " * $(date +%H:%M:%S) debmower: Copying additional pool packages..." >> "$LOGPATH"
-            cp -r $POOL_PKGS_DIR/*deb /var/cache/debmower/pool_pkg
-            abort_on_fail
-=======
         chroot $CHROOT apt-get -y -d install $POOL_PKGS >> $LOGPATH.extended || abort_on_fail
         mkdir -p /var/cache/debmower/pool_pkg
         cp -r $CHROOT/var/cache/apt/archives/*deb /var/cache/debmower/pool_pkg
         if [ ! -z $POOL_PKGS_DIR ]; then
             echo " * $(date +%H:%M:%S) debmower: Copying additional pool packages..." >> $LOGPATH
             cp -r $POOL_PKGS_DIR/*deb /var/cache/debmower/pool_pkg || abort_on_fail
->>>>>>> d361ced7ac8fc7501e78f2e62caece6bb94e7a7b
         fi
         mkdir -p /var/cache/debmower/pool_pkg/archives/conf
         # FIXME: Architectures hardcoded:
         echo -e "Codename: $RELEASE\nComponents:main\nArchitectures: i386 amd64" \
                 > /var/cache/debmower/pool_pkg/archives/conf/distributions
-<<<<<<< HEAD
-        echo " * $(date +%H:%M:%S) debmower: Generating pool indices..." >> "$LOGPATH"
-        reprepro -b /var/cache/debmower/pool_pkg/archives/ includedeb $RELEASE /var/cache/debmower/pool_pkg/*deb >> "$LOGPATH".extended
-        abort_on_fail
-=======
         echo " * $(date +%H:%M:%S) debmower: Generating pool indices..." >> $LOGPATH
         reprepro -b /var/cache/debmower/pool_pkg/archives/ includedeb \
                  $RELEASE /var/cache/debmower/pool_pkg/*deb >> $LOGPATH.extended || abort_on_fail
->>>>>>> d361ced7ac8fc7501e78f2e62caece6bb94e7a7b
         cp -R /var/cache/debmower/pool_pkg/archives/{pool,dists} $IMAGEDIR
         chroot $CHROOT apt-get clean
         rm -rf /var/cache/debmower/pool_pkg
@@ -439,28 +365,28 @@ function create_pkg_pool {
 
 
 function generate_reports {
-    echo "debmower: REPORT: Main meta used is $MAINMETA and live is $LIVECD" >> "$LOGPATH"
-    echo "debmower: REPORT: This $IMAGETYPE uses $COMP for squashfs compression" >> "$LOGPATH"
+    echo "debmower: REPORT: Main meta used is $MAINMETA and live is $LIVECD" >> $LOGPATH
+    echo "debmower: REPORT: This $IMAGETYPE uses $COMP for squashfs compression" >> $LOGPATH
     #TODO: Check whether manifests exist before reporting on it
     echo "debmower: REPORT: Total packages in manifest: $MANIFEST_PKG packages" \
-          >> "$LOGPATH"
+          >> $LOGPATH
     echo "debmower: REPORT: Live package manifest: $MANIFEST_PKG_RM packages" \
-          >> "$LOGPATH"
-    echo "debmower: REPORT: Templates dir: $TEMPLATE" >> "$LOGPATH"
+          >> $LOGPATH
+    echo "debmower: REPORT: Templates dir: $TEMPLATE" >> $LOGPATH
     echo "debmower: REPORT: tmpfs available size: $TMPFS_AVAILABLE" \
-         &>> "$LOGPATH"
+         &>> $LOGPATH
     echo "debmower: REPORT: tmpfs used: $TMPFS_USED" \
-         &>> "$LOGPATH"
-    echo "debmower: REPORT: Built from cached image: $CACHEIMG" >> "$LOGPATH"
-    echo "debmower: REPORT: Squashfs image size is: $SQUASHFS_SIZE" >> "$LOGPATH"
-    echo "debmower: REPORT: Package pool size is: $PKG_POOL_SIZE" >> "$LOGPATH"
-    echo "debmower: REPORT: ISO size is $ISO_SIZE" >> "$LOGPATH"
-    echo "debmower: $(date +%H:%M:%S) All done." >> "$LOGPATH"
+         &>> $LOGPATH
+    echo "debmower: REPORT: Built from cached image: $CACHEIMG" >> $LOGPATH
+    echo "debmower: REPORT: Squashfs image size is: $SQUASHFS_SIZE" >> $LOGPATH
+    echo "debmower: REPORT: Package pool size is: $PKG_POOL_SIZE" >> $LOGPATH
+    echo "debmower: REPORT: ISO size is $ISO_SIZE" >> $LOGPATH
+    echo "debmower: $(date +%H:%M:%S) All done." >> $LOGPATH
 }
 
 
 function abort_build {
-    echo "debmower: $(date +%H:%M:%S) Aborting..." &>> "$LOGPATH"
+    echo "debmower: $(date +%H:%M:%S) Aborting..." &>> $LOGPATH
     umount -f -l /mnt/debmower/squashfs
     chroot_bind_unmounts
     umount -f -l $CHROOT
@@ -475,25 +401,10 @@ function abort_build {
 
 
 function abort_on_fail {
-<<<<<<< HEAD
-    if [ "$?" = "0" ]; then
-        echo "debmower: $(date +%H:%M:%S) ... completed successfully" \
-        >> "$LOGPATH"
-    else
-        echo "debmower: $(date +%H:%M:%S) ... step has failed," \
-        >> "$LOGPATH"
-        echo "          There is no point in going on." >> "$LOGPATH"
-        abort_build
-    for mountpoint in $(mount | grep debmower | awk '{print $3}');
-        do umount -f -l $mountpoint; &> /dev/null
-    done
-    fi
-=======
     echo "debmower: $(date +%H:%M:%S) ... step has failed," \
     >> $LOGPATH
     echo "          There is no point in going on." >> $LOGPATH
     abort_build
->>>>>>> d361ced7ac8fc7501e78f2e62caece6bb94e7a7b
 }
 
 
