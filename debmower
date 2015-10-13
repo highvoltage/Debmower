@@ -61,8 +61,8 @@ function initenv {
     echo "debmower: this build ID is $BUILD_ID" >> "$LOGPATH"
     echo "" > "$LOGPATH.extended"
     echo "debmower: $(date +%H:%M:%S) Preparing directories..." >> "$LOGPATH"
-    rm -rf "$IMAGEDIR $CHROOT"
-    echo "debmower: $(date +%H:%M:%S) (enabling a ramdisk build)" >> "$LOGPATH"
+    rm -rf "$IMAGEDIR" "$CHROOT"
+    echo "debmower: $(date +%H:%M:%S) Enabling a ramdisk build..." >> "$LOGPATH"
 
     mkdir -p /mnt/debmower/tmp
     mount -t tmpfs tmpfs /mnt/debmower/tmp
@@ -77,8 +77,8 @@ function initenv {
                  /mnt/debmower/tmp=RW:/mnt/debmower/squashfs=RO \
                  "$CHROOT" || abort_on_fail
     chroot_bind_mounts
-    echo "none none none none 0 0" > "$CHROOT/etc/mtab"
-    cp /etc/resolv.conf "$CHROOT/etc"
+    echo "none none none none 0 0" > "$CHROOT"/etc/mtab
+    cp /etc/resolv.conf "$CHROOT"/etc
     if [ "$SYSTEM" = "ubuntu" ]; then
         echo "debmower: $(date +%H:%M:%S) Diverting initctl..." \
              >> "$LOGPATH"
@@ -112,11 +112,11 @@ function system_install {
         chroot "$CHROOT" /etc/init.d/dbus stop
         chroot "$CHROOT" /etc/init.d/dbus start
     fi
-    DEBIAN_FRONTEND="$DEBIAN_FRONTEND" chroot "$CHROOT $INSTALL" \
-                    "$MAINMETA" &>> "$LOGPATH.extended" || abort_on_fail
+    DEBIAN_FRONTEND="$DEBIAN_FRONTEND" chroot "$CHROOT" $INSTALL \
+                    $MAINMETA &>> "$LOGPATH.extended" || abort_on_fail
     echo "debmower: $(date +%H:%M:%S) Installing kernel..." >> "$LOGPATH"
-    DEBIAN_FRONTEND="$DEBIAN_FRONTEND" chroot "$CHROOT $INSTALL" \
-                    "$KERNEL" &>> "$LOGPATH.extended" || abort_on_fail
+    DEBIAN_FRONTEND="$DEBIAN_FRONTEND" chroot "$CHROOT" $INSTALL \
+                    $KERNEL &>> "$LOGPATH.extended" || abort_on_fail
     TMPFS_AVAILABLE=$(df -h /mnt/debmower/tmp | grep debmower | awk '{print $2}')
          &>> "$LOGPATH"
     TMPFS_USED=$(df -h /mnt/debmower/tmp | grep debmower | awk '{print $4}')
@@ -138,10 +138,7 @@ function setup_livecd {
     fi
     # Set up Live CD
     echo "debmower: $(date +%H:%M:%S) Installing live packages..." >> "$LOGPATH"
-    chroot "$CHROOT" "$INSTALL" "$LIVECD" &>> "$LOGPATH.extended" || abort_on_fail
-    #echo "Here's your shellout..."
-    #cp -R /home/jonathan/archives.cp /var/cache/debmower/chroot
-    #chroot /var/cache/debmower/chroot
+    chroot "$CHROOT" $INSTALL $LIVECD &>> "$LOGPATH.extended" || abort_on_fail
     UPDATE_INITRAMFS="yes"
     echo "debmower: $(date +%H:%M:%S) Setting up live kernels..." >> "$LOGPATH"
     if [ "$UPDATE_INITRAMFS" = "yes" ]; then
@@ -326,7 +323,7 @@ function updatecache {
     chroot_bind_unmounts &>> /dev/null
     # generate squashfs for future ramdisk use
     echo " * $(date +%H:%M:%S) Creating $CACHEIMG squashfs cache file..." >> "$LOGPATH"
-    mksquashfs $CHROOT $CACHEDIR/$CACHEIMG.squashfs -noappend -no-progress &> "$LOGPATH.extended" || abort_on_fail
+    mksquashfs "$CHROOT" "$CACHEDIR"/"$CACHEIMG".squashfs -noappend -no-progress &> "$LOGPATH.extended" || abort_on_fail
     umount -f -l /mnt/debmower/tmp &> /dev/null
     umount -f -l /mnt/debmower &> /dev/null
     rm -rf /mnt/debmower
