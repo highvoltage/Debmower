@@ -143,7 +143,7 @@ function setup_livecd {
     echo "debmower: $(date +%H:%M:%S) Setting up live kernels..." >> "$LOGPATH"
     if [ "$UPDATE_INITRAMFS" = "yes" ]; then
         echo "debmower: $(date +%H:%M:%S) Generating new initramfs..." >> "$LOGPATH"
-        chroot "$CHROOT" update-initramfs -u &>> "$LOGPATH" || abort_on_fail
+        chroot "$CHROOT" update-initramfs -u &>> "$LOGPATH.extended" || abort_on_fail
     fi
     # The initrd needs to be compressed with lzma, so we need to decompress it from
     # the default gzip first.
