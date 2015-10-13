@@ -337,9 +337,9 @@ function updatecache {
 
 function create_pkg_pool {
     if [ ! -z "$POOL_PKGS" ]; then
-        echo " * $(date +%H:%M:%S) debmower: Setting up package pool..." > $LOGPATH
+        echo "debmower: $(date +%H:%M:%S) Setting up package pool..." > $LOGPATH
         chroot $CHROOT apt-get clean
-        echo " * $(date +%H:%M:%S)  Downloading $POOL_PKGS" > $LOGPATH
+        echo "debmower: $(date +%H:%M:%S) Downloading $POOL_PKGS" >> $LOGPATH
         export POOL_PKGS
         # this is needed if we change network since template build
         cp /etc/resolv.conf $CHROOT/etc/
@@ -347,7 +347,7 @@ function create_pkg_pool {
         mkdir -p /var/cache/debmower/pool_pkg
         cp -r $CHROOT/var/cache/apt/archives/*deb /var/cache/debmower/pool_pkg
         if [ ! -z $POOL_PKGS_DIR ]; then
-            echo " * $(date +%H:%M:%S) debmower: Copying additional pool packages..." >> $LOGPATH
+            echo "debmower: $(date +%H:%M:%S) opying additional pool packages..." >> $LOGPATH
             cp -r $POOL_PKGS_DIR/*deb /var/cache/debmower/pool_pkg || abort_on_fail
         fi
         mkdir -p /var/cache/debmower/pool_pkg/archives/conf
