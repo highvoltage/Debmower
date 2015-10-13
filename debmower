@@ -337,7 +337,7 @@ function updatecache {
 
 function create_pkg_pool {
     if [ ! -z "$POOL_PKGS" ]; then
-        echo "debmower: $(date +%H:%M:%S) Setting up package pool..." > $LOGPATH
+        echo "debmower: $(date +%H:%M:%S) Setting up package pool..." >> $LOGPATH
         chroot $CHROOT apt-get clean
         echo "debmower: $(date +%H:%M:%S) Downloading $POOL_PKGS" >> $LOGPATH
         export POOL_PKGS
