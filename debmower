@@ -117,9 +117,9 @@ function system_install {
     echo "debmower: $(date +%H:%M:%S) Installing kernel..." >> "$LOGPATH"
     DEBIAN_FRONTEND="$DEBIAN_FRONTEND" chroot "$CHROOT" $INSTALL \
                     $KERNEL &>> "$LOGPATH.extended" || abort_on_fail
-    TMPFS_AVAILABLE=$(df -h /mnt/debmower/tmp | grep debmower | awk '{print $2}')
+    TMPFS_AVAILABLE=$(df -h /mnt/debmower/tmp | grep debmower | awk '{print $4}')
          &>> "$LOGPATH"
-    TMPFS_USED=$(df -h /mnt/debmower/tmp | grep debmower | awk '{print $4}')
+    TMPFS_USED=$(df -h /mnt/debmower/tmp | grep debmower | awk '{print $3}')
 }
 
 
