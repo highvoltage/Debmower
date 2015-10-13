@@ -207,7 +207,7 @@ function setup_livecd {
     fi
 
     echo "debmower: $(date +%H:%M:%S) Cleaning up chroot data..." >> "$LOGPATH"
-    chroot "$CHROOT" /etc/init.d/dbus stop
+    chroot "$CHROOT" /etc/init.d/dbus stop &>> "$LOGPATH.extended"
     rm -f "$CHROOT"/var/run/dbus/system_bus_socket
     if [ "$SYSTEM" = "ubuntu" ]; then
         rm "$CHROOT"/sbin/initctl
@@ -278,8 +278,8 @@ function build_cd_image {
     ISO_SIZE=$(du -sh "$ISOPATH"/"$ISONAME" | awk '{print $1}')
 
     echo "debmower: $(date +%H:%M:%S) Cleaning up..." >> "$LOGPATH"
-    umount -l "$CHROOT"
-    umount -l /mnt/debmower/squashfs
+    umount -l -f "$CHROOT"
+    umount -l -f /mnt/debmower/squashfs
     umount -l -f /mnt/debmower/tmp > /dev/null
     rmdir /mnt/debmower/tmp
     rm -rf /mnt/debmower
@@ -341,7 +341,7 @@ function create_pkg_pool {
         export POOL_PKGS
         # this is needed if we change network since template build
         cp /etc/resolv.conf $CHROOT/etc/
-        chroot "$CHROOT" apt-get -y -d install "$POOL_PKGS" >> "$LOGPATH.extended" || abort_on_fail
+        chroot "$CHROOT" apt-get -y -d install $POOL_PKGS >> "$LOGPATH.extended" || abort_on_fail
         mkdir -p /var/cache/debmower/pool_pkg
         cp -r "$CHROOT"/var/cache/apt/archives/*deb /var/cache/debmower/pool_pkg
         if [ ! -z "$POOL_PKGS_DIR" ]; then
