@@ -158,9 +158,12 @@ function setup_livecd {
     if [ "$GENISOLINUX_STRUCTURE" = "yes" ]; then
         mkdir -p "$IMAGEDIR"/isolinux
         echo "debmower: $(date +%H:%M:%S) Configuring isolinux structure..." >> "$LOGPATH"
-        cp /usr/lib/ISOLINUX/isolinux.bin /usr/lib/syslinux/modules/bios/ldlinux.c32 \
-           /usr/lib/syslinux/modules/bios/vesamenu.c32 /usr/lib/syslinux/modules/bios/libcom32.c32 \
-           /usr/lib/syslinux/modules/bios/libutil.c32 /usr/lib/syslinux/modules/bios/gfxboot.c32 \
+        cp /usr/lib/ISOLINUX/isolinux.bin \
+	   /usr/lib/syslinux/modules/bios/ldlinux.c32 \
+           /usr/lib/syslinux/modules/bios/vesamenu.c32 \
+	   /usr/lib/syslinux/modules/bios/libcom32.c32 \
+           /usr/lib/syslinux/modules/bios/libutil.c32 \
+	   /usr/lib/syslinux/modules/bios/gfxboot.c32 \
            /usr/lib/syslinux/modules/bios/chain.c32 \
            "$IMAGEDIR"/isolinux/ &>> "$LOGPATH" || abort_on_fail
         #TODO: This will be somewhat more configurable in the future:
@@ -311,7 +314,7 @@ function updatecache {
     LANG=C LANGUAGE=C LC_ALL=C chroot $CHROOT apt-get -q update &>> "$LOGPATH.extended"
         echo " * $(date +%H:%M:%S) Installing requested cache packages..." \
              &>> "$LOGPATH"
-        DEBIAN_FRONTEND="$DEBIAN_FRONTEND" chroot "$CHROOT" "$INSTALL" "$CACHEPACKAGES" \
+        DEBIAN_FRONTEND="$DEBIAN_FRONTEND" chroot "$CHROOT" $INSTALL $CACHEPACKAGES \
                &>> "$LOGPATH.extended" || abort_on_fail
     fi
     echo "debmower: cleaning up..." &>> "$LOGPATH"
