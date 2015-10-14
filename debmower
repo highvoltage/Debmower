@@ -127,12 +127,12 @@ function setup_livecd {
     # Create a manifest file if we use Ubiquity (or for now, Ubuntu, at least)
     # We need to do this before the livecd packages are installed
     if [ "$SYSTEM" = "ubuntu" ]; then
-        chroot "$CHROOT" dpkg-query -W --showformat="${Package} ${Version}\n" \
+        chroot "$CHROOT" dpkg-query -W --showformat='${Package} ${Version}\n' \
                        | tee "$IMAGEDIR/$LIVEDIR/filesystem.manifest" \
                          &>> "$LOGPATH.extended"
     fi
     if [ "$SYSTEM" = "debian" ]; then
-        chroot "$CHROOT" dpkg-query -W --showformat="${Package} ${Version}\n" \
+        chroot "$CHROOT" dpkg-query -W --showformat='${Package} ${Version}\n' \
                        | tee "$IMAGEDIR/$LIVEDIR/filesystem.manifest" \
                          &>> "$LOGPATH.extended"
     fi
