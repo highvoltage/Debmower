@@ -304,7 +304,7 @@ function updatecache {
     echo " * $(date +%H:%M:%S) Performing initial debootstrapping for $RELEASE..." >> "$LOGPATH"
 
     CHROOT=/mnt/debmower/chroot
-    debootstrap "$RELEASE" "$CHROOT" "$DEBOOTSTRAP_MIRROR" &>> "$LOGPATH.extended" || abort_on_fail
+    debootstrap --arch="$ARCH" "$RELEASE" "$CHROOT" "$DEBOOTSTRAP_MIRROR" &>> "$LOGPATH.extended" || abort_on_fail
     chroot_bind_mounts
     if [ ! -z "$CACHEPACKAGES" ]; then
     echo "debmower: $(date +%H:%M:%S) Setting up APT sources and updating..." \
