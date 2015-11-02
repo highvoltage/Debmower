@@ -396,7 +396,7 @@ function create_pkg_pool {
         mkdir -p /var/cache/debmower/pool_pkg
         cp -r "$CHROOT"/var/cache/apt/archives/*deb /var/cache/debmower/pool_pkg
         if [ ! -z "$POOL_PKGS_DIR" ]; then
-            echo "debmower: $(date +%H:%M:%S) opying additional \"
+            echo "debmower: $(date +%H:%M:%S) opying additional "\
                  "pool packages..." >> "$LOGPATH"
             cp -r "$POOL_PKGS_DIR"/*deb \
                   /var/cache/debmower/pool_pkg || abort_on_fail
